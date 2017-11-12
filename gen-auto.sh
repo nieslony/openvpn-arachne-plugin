@@ -23,7 +23,7 @@ if [ "$1" = "clean" ]; then
 fi
 
 echo --- libtoolize ---
-libtoolize
+libtoolize --copy
 
 echo --- aclocal ---
 aclocal 

@@ -14,13 +14,15 @@ AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_AR
 AM_PROG_LD
-LT_INIT
+LT_INIT([disable-static])
+
 AC_CHECK_HEADER(openvpn-plugin.h)
+AC_CHECK_HEADER(boost/asio.hpp)
 
 AC_SUBST([plugindir])
 
 AC_CONFIG_FILES([
- Makefile
- src/Makefile
+    Makefile
+    src/Makefile
 ])
 AC_OUTPUT
