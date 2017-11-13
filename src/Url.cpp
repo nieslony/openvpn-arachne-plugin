@@ -36,7 +36,10 @@ std::string Url::str() const
 {
     std::ostringstream os;
 
-    os << _protocol << "://" << _host << ":" << _port << _path;
+    os << _protocol << "://" << _host;
+    if (_port != 0)
+        os << ":" << _port;
+    os << _path;
 
     return os.str();
 }

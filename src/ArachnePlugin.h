@@ -18,7 +18,8 @@ private:
     void chop(std::string&);
 
     void log(openvpn_plugin_log_flags_t flags, const char *format, ...);
-    int http(const Url &url);
+    int http(const Url &url, const std::string& userPwd);
+    std::string base64(const char* in) noexcept;
 
 public:
     ArachnePlugin(const openvpn_plugin_args_open_in*);

@@ -49,23 +49,28 @@ void ArachnePlugin::log(openvpn_plugin_log_flags_t flags, const char *msg, ...)
 int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[])
 {
     bool authSuccessfull = true;
-    const char *username = getenv("username", envp);
+    string username(getenv("username", envp));
+    string password(getenv("password", envp));
+    string userPwd = username + ":" + password;
+    string userPwdBase64 = base64(userPwd.c_str());
 
-    log(PLOG_NOTE, "Trying to authticate user %s...", username);
+    log(PLOG_NOTE, "Trying to authticate user %s...", username.c_str());
 
-    authSuccessfull = http(url) == 200;
+
+
+    authSuccessfull = http(url, userPwdBase64) == 200;
 
     if (authSuccessfull) {
-        log(PLOG_NOTE, "User %s authenticated successfull", username);
+        log(PLOG_NOTE, "User %s authenticated successfully", username.c_str());
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     }
     else {
-        log(PLOG_NOTE, "Authtication for user %s failed", username);
+        log(PLOG_NOTE, "Authtication for user %s failed", username.c_str());
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 }
 
-int ArachnePlugin::http(const Url &url)
+int ArachnePlugin::http(const Url &url, const string &userPwd)
 {
     log(PLOG_NOTE, "Opening %s...", url.str().c_str());
 
@@ -83,12 +88,15 @@ int ArachnePlugin::http(const Url &url)
             return -1;
         }
 
+        cout << userPwd << endl;
+
         log(PLOG_NOTE, "Creating request...");
         boost::asio::streambuf request;
         std::ostream request_stream(&request);
         request_stream << "GET " << url.path() << " HTTP/1.0\r\n";
         request_stream << "Host: " << url.host() << "\r\n";
         request_stream << "Accept: */*\r\n";
+        request_stream << "Authorization: Basic " << userPwd << "\r\n";
         request_stream << "Connection: close\r\n\r\n";
 
         log(PLOG_NOTE, "Sending request...");
@@ -130,7 +138,7 @@ int ArachnePlugin::http(const Url &url)
             Url location = headers["Location"];
             location.setPort(url.port());
             log(PLOG_NOTE, "Forwarding to %s", location.str().c_str());
-            return http(location);
+            return http(location, userPwd);
         }
 
         return status_code;
@@ -143,36 +151,6 @@ int ArachnePlugin::http(const Url &url)
     return -1;
 }
 
-std::string toBase64(std::string& in) {
-    const char BASE64CHARS[64] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789"
-        "+/";
-
-    ostringstream os;
-    for ( std::string::iterator it=str.begin(); it!=str.end(); it++) {
-        os << BASE64CHARS[*it & 63];
-
-        char rest = *it >> 6 ;
-        it++;
-        if (it == str.end()) {
-            os << "==";
-            break;
-        }
-        rest |= (*it & 63);
-        os << BASE64CHARS[rest];
-
-        it++;
-        if (it == str.end()) {
-            os << =;
-            break;
-        }
-
-        rest = *
-    }
-}
-
 void ArachnePlugin::chop(std::string &s)
 {
     size_t pos;
@@ -183,3 +161,67 @@ void ArachnePlugin::chop(std::string &s)
     while ( (pos = s.find("\n")) != string::npos)
         s.erase(pos, 1);
 }
+
+string ArachnePlugin::base64(const char* in) noexcept
+{
+    ostringstream  os;
+    const char B64CHARS[65] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789"
+        "+/";
+
+    int extra_chars = 0;
+    try {
+        for (const char* it = in; *it != 0; it++) {
+            cout << "---" << endl;
+            char oct0, oct1, oct2;
+
+
+            oct0 = *it;
+
+            if (*(it+1) != 0) {
+                it++;
+                oct1 = *it & 0xff;
+            }
+            else {
+                oct1 = 0;
+                extra_chars++;
+            }
+
+            if (*(it+1) != 0) {
+                it++;
+                oct2 = *it & 0xff;
+            }
+            else {
+                oct2 = 0;
+                extra_chars++;
+            }
+
+            uint32_t d0 = ( (oct0 & 0xfc) >> 2 )& 63;
+            uint32_t d1 = ( ((oct0 << 4) & 0x30) | ((oct1 >> 4) & 0x0f) ) & 63;
+            uint32_t d2 = ( ((oct1 << 2) & 0x3c) | ((oct2 >> 6) & 0x03) ) & 63;
+            uint32_t d3 = ( (oct2 & 0x3f) );
+
+            os << B64CHARS[d0 & 63] << B64CHARS[d1 & 63];
+            switch (extra_chars) {
+                case 0:
+                    os << B64CHARS[d2  & 63] << B64CHARS[d3 & 63];
+                    break;
+                case 1:
+                    os << B64CHARS[d2 & 63] << "=";
+                    break;
+                case 2:
+                    os << "==";
+                    break;
+            }
+        }
+    }
+    catch (exception &ex) {
+        cerr << "Exception: " << ex.what() << endl;
+    }
+
+
+    return os.str();
+}
+
