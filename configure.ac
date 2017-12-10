@@ -18,6 +18,9 @@ LT_INIT([disable-static])
 
 AC_CHECK_HEADER(openvpn-plugin.h)
 AC_CHECK_HEADER(boost/asio.hpp)
+AC_CHECK_HEADER(boost/bind.hpp)
+AC_CHECK_HEADER(boost/asio/ssl.hpp)
+
 
 AC_SUBST([plugindir])
 

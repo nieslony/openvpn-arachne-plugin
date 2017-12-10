@@ -1,21 +1,31 @@
 #include "ArachnePlugin.h"
+#include "ClientSession.h"
 
 #include <cstring>
 #include <cstdarg>
+#include <ctime>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 #include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
+#include <boost/bind.hpp>
 
 using namespace std;
 using boost::asio::ip::tcp;
+using namespace boost::asio;
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
 {
     log_func = in_args->callbacks->plugin_vlog;
+    time(&_startupTime);
 
     log(PLOG_NOTE, "Initializing plugin...");
-    url = in_args->argv[1];
+
+    parseOptions(in_args->argv);
+
+    _sessionCounter = 0;
 }
 
 const char* ArachnePlugin::getenv(const char* key, const char *envp[])
@@ -36,17 +46,30 @@ const char* ArachnePlugin::getenv(const char* key, const char *envp[])
     return "";
 }
 
+void ArachnePlugin::log(openvpn_plugin_log_flags_t flags, long sessionId, const char *msg, ...)
+{
+    va_list argptr;
+    va_start(argptr, msg);
+
+    std::stringstream id;
+    id << "Arachne_" << std::hex << _startupTime << "-" << sessionId;
+
+    log_func(flags, id.str().c_str(), msg, argptr);
+
+    va_end(argptr);
+}
+
+
 void ArachnePlugin::log(openvpn_plugin_log_flags_t flags, const char *msg, ...)
 {
     va_list argptr;
     va_start(argptr, msg);
 
-    log_func(flags, "Arachne", msg, argptr);
-
-    va_end(argptr);
+    log(flags, 0, msg, argptr);
 }
 
-int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[])
+int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
+    ClientSession* session)
 {
     bool authSuccessfull = true;
     string username(getenv("username", envp));
@@ -54,43 +77,70 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[])
     string userPwd = username + ":" + password;
     string userPwdBase64 = base64(userPwd.c_str());
 
-    log(PLOG_NOTE, "Trying to authticate user %s...", username.c_str());
+    log(PLOG_NOTE, session->id(), "Trying to authenticate user %s...", username.c_str());
 
-
-
-    authSuccessfull = http(url, userPwdBase64) == 200;
+    authSuccessfull = http(url, userPwdBase64, session) == 200;
 
     if (authSuccessfull) {
-        log(PLOG_NOTE, "User %s authenticated successfully", username.c_str());
+        log(PLOG_NOTE, session->id(), "User %s authenticated successfully", username.c_str());
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     }
     else {
-        log(PLOG_NOTE, "Authtication for user %s failed", username.c_str());
+        log(PLOG_NOTE, session->id(), "Authtication for user %s failed", username.c_str());
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 }
 
-int ArachnePlugin::http(const Url &url, const string &userPwd)
+bool ArachnePlugin::verify_certificate(bool preverified,
+                                       ssl::verify_context& ctx)
 {
-    log(PLOG_NOTE, "Opening %s...", url.str().c_str());
+    char subject_name[256];
+    X509 * cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+    X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
+
+    stringstream msg;
+    msg << "Verifying " << subject_name;
+    log(PLOG_NOTE, msg.str().c_str());
+
+    return preverified;
+}
+
+int ArachnePlugin::http(const Url &url, const string &userPwd, ClientSession* session)
+{
+    log(PLOG_NOTE, session->id(), "Opening %s...", url.str().c_str());
 
     try {
         boost::asio::io_service io_service;
 
-        tcp::resolver resolver(io_service);
-        tcp::resolver::query query(url.host(), std::to_string(url.port()));
-        tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
+        ip::tcp::resolver resolver(io_service);
+        auto it = resolver.resolve({url.host(), std::to_string(url.port()) });
 
+/*
         tcp::socket socket(io_service);
-        boost::asio::connect(socket, endpoint_iterator);
-        if (!socket.is_open()) {
+        boost::asio::connect(socket, it);
+*/
+
+        ssl::context ctx(io_service, ssl::context::method::sslv23_client);
+        if (_caFile.length() > 0)
+            ctx.load_verify_file(_caFile);
+        ssl::stream<ip::tcp::socket> socket(io_service, ctx);
+
+        if (!_ignoreSsl) {
+            socket.set_verify_mode(boost::asio::ssl::verify_peer);
+            socket.set_verify_callback(ssl::rfc2818_verification(url.host()));
+        }
+/*        socket.set_verify_callback(boost::bind(
+            &ArachnePlugin::verify_certificate, this, _1, _2));
+*/
+        boost::asio::connect(socket.lowest_layer(), it);
+        socket.handshake(ssl::stream_base::handshake_type::client);
+
+        /*if (!socket.is_open()) {
             log(PLOG_ERR, "Cannot open socket");
             return -1;
-        }
+        }*/
 
-        cout << userPwd << endl;
-
-        log(PLOG_NOTE, "Creating request...");
+        log(PLOG_NOTE, session->id(), "Creating request...");
         boost::asio::streambuf request;
         std::ostream request_stream(&request);
         request_stream << "GET " << url.path() << " HTTP/1.0\r\n";
@@ -99,10 +149,10 @@ int ArachnePlugin::http(const Url &url, const string &userPwd)
         request_stream << "Authorization: Basic " << userPwd << "\r\n";
         request_stream << "Connection: close\r\n\r\n";
 
-        log(PLOG_NOTE, "Sending request...");
+        log(PLOG_NOTE, session->id(), "Sending request...");
         boost::asio::write(socket, request);
 
-        log(PLOG_NOTE, "Waiting for response");
+        log(PLOG_NOTE, session->id(), "Waiting for response");
         boost::asio::streambuf response;
         boost::asio::read_until(socket, response, "\r\n");
 
@@ -116,7 +166,7 @@ int ArachnePlugin::http(const Url &url, const string &userPwd)
         chop(status_message);
 
         if (!response_stream || http_version.substr(0, 5) != "HTTP/") {
-            log(PLOG_ERR, "Invalid HTTP response");
+            log(PLOG_ERR, session->id(), "Invalid HTTP response");
             return 500;
         }
 
@@ -132,20 +182,22 @@ int ArachnePlugin::http(const Url &url, const string &userPwd)
             headers[name] = value;
         }
 
-        log(PLOG_NOTE, "HTTP status: %d (%s )", status_code, status_message.c_str());
+        log(PLOG_NOTE, session->id(), "HTTP status: %d (%s )", status_code, status_message.c_str());
 
         if (status_code == 302) {
             Url location = headers["Location"];
             location.setPort(url.port());
-            log(PLOG_NOTE, "Forwarding to %s", location.str().c_str());
-            return http(location, userPwd);
+            log(PLOG_NOTE, session->id(), "Forwarding to %s", location.str().c_str());
+            return http(location, userPwd, session);
         }
 
         return status_code;
     }
-    catch (std::exception& e)
+    catch (const std::exception& e)
     {
-        log(PLOG_ERR, "Exception: %s", e.what());
+        const std::type_info& r1 = typeid(e);
+        log(PLOG_ERR, session->id(), r1.name());
+        log(PLOG_ERR, session->id(), "Exception: %s", e.what());
     }
 
     return -1;
@@ -221,7 +273,54 @@ string ArachnePlugin::base64(const char* in) noexcept
         cerr << "Exception: " << ex.what() << endl;
     }
 
-
     return os.str();
 }
 
+ClientSession *ArachnePlugin::createClientSession()
+{
+    ClientSession *session = new ClientSession(*this);
+    session->_sessionId = ++_sessionCounter;
+
+    return session;
+}
+
+void ArachnePlugin::parseOptions(const char **argv)
+{
+    for (const char **arg = argv+1; *arg != 0; arg++) {
+        std::string args(*arg);
+
+        std::size_t found = args.find("=");
+        if (found == std::string::npos) {
+            std::stringstream msg;
+            msg << "Key value pair expected: " << args;
+            throw (PluginException(msg.str()));
+        }
+        std::string key = args.substr(0, found);
+        std::string value = args.substr(found+1);
+
+        if (key == "url") {
+            url = value;
+        }
+        else if (key == "cafile") {
+            _caFile = value;
+        }
+        else if (key == "ignoressl") {
+            if (value == "1" or value == "true" or value == "yes") {
+                _ignoreSsl = true;
+            }
+            else if (value == "0" or value == "false" or value == "no") {
+                _ignoreSsl = false;
+            }
+            else {
+                std::stringstream msg;
+                msg << "Boolean value expected for parameter " << key << ": " << value;
+                throw (PluginException(msg.str()));
+            }
+        }
+        else {
+            std::stringstream msg;
+            msg << "Invalid key: " << key;
+            throw (PluginException(msg.str()));
+        }
+    }
+}

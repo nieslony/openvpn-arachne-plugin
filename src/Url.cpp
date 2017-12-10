@@ -16,7 +16,14 @@ void Url::init(const std::string& url)
     _host = url.substr(begin_host, begin_path-begin_host);
 
     size_t begin_port = _host.find(":");
-    unsigned port = 80;
+
+    if (_protocol == "http")
+        _port = 80;
+    else if(_protocol == "https")
+        _port = 443;
+    else
+        _port = 65535;
+
     if (begin_port != std::string::npos) {
         std::string port_str = _host.substr(begin_port+1);
         _port = std::stoi(port_str);
