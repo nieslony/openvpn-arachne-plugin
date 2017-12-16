@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include <boost/asio/ssl.hpp>
+#include <boost/asio.hpp>
 
 #include <openvpn-plugin.h>
 
@@ -36,8 +37,9 @@ private:
     void log(openvpn_plugin_log_flags_t flags, const char *format, ...);
     void parseOptions(const char **argv);
 
-    bool verify_certificate(bool preverified,
-                            boost::asio::ssl::verify_context& ctx);
+    template<typename Socket>
+    int handleRequest(Socket &socket, const std::string &userPwd, ClientSession* session);
+
 public:
     ArachnePlugin(const openvpn_plugin_args_open_in*);
 
