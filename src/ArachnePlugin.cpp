@@ -13,6 +13,7 @@
 #include <boost/bind.hpp>
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
+    : _ignoreSsl(false)
 {
     log_func = in_args->callbacks->plugin_vlog;
     time(&_startupTime);
