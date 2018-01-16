@@ -3,7 +3,13 @@
 #include <stdlib.h>
 #include <cstdarg>
 
+#if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
+#elif defined HAVE_OPENVPN_OPENVPN_PLUGIN_H
+#include <openvpn/openvpn-plugin.h>
+#else
+#error "Cannot inclide openvpn-plugin.h"
+#endif
 
 #include "ArachnePlugin.h"
 #include "ClientSession.h"

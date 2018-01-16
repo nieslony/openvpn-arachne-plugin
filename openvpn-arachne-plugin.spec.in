@@ -1,14 +1,15 @@
 Name:       openvpn-arachne-plugin
-Version:    0.1.0
+Version:    0.1.1
 Release:    1
-Summary:    openVPN plugin needed by arachne
+Summary:    An openVPN plugin needed by arachne
 
 License:    GPL-2.0+
 URL:        http://www.nieslony.site/arachne
 Source0:    %{name}-%{version}.tar.gz
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires:  openvpn-devel, boost-devel, gcc-c++
+BuildRequires:  openvpn-devel, boost-devel, gcc-c++, openssl-devel
+Requires:	boost
 
 %if 0%{?centos_version}
 %define cxxflags --std=c++11
