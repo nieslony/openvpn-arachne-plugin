@@ -297,8 +297,8 @@ void ArachnePlugin::parseOptions(const char **argv)
     }
 
     std::string s;
-    iniFile.get("url", s);
-    url = s;
+    if (iniFile.get("url", s))
+        url = s;
     iniFile.get("cafile", _caFile);
     iniFile.get("ignoressl", _ignoreSsl);
     iniFile.get("handleipforwarding", _handleIpForwarding);

@@ -88,6 +88,6 @@ bool IniFile::get(const string &key, bool& value)
     }
 
     ostringstream buf;
-    buf << "Bllean value expected for key " << key << ": " << value;
+    buf << "Bolean value expected for key " << key << ": " << value;
     throw IniFileException(buf.str());
 }
