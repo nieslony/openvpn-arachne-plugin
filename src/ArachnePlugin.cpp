@@ -1,5 +1,6 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
+#include "IniFile.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -7,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -123,10 +125,18 @@ int ArachnePlugin::http(const Url &url, const std::string &userPwd, ClientSessio
     }
     else if (url.protocol() == "http") {
         log(PLOG_NOTE, session->id(), "Creating TCP socket");
-        boost::asio::ip::tcp::socket socket(io_service);
-        boost::asio::connect(socket, it);
+        try {
+            boost::asio::ip::tcp::socket socket(io_service);
+            boost::asio::connect(socket, it);
 
-        return handleRequest(socket, userPwd, session);
+            return handleRequest(socket, userPwd, session);
+        }
+        catch (std::exception &ex) {
+            log(PLOG_ERR, session->id(), "Cannot open socket: %s", ex.what());
+
+            return -1;
+        }
+
     }
     else {
         log(PLOG_ERR, session->id(), "Invalid protocol: %s", url.protocol().c_str());
@@ -216,6 +226,8 @@ ClientSession *ArachnePlugin::createClientSession()
 
 void ArachnePlugin::parseOptions(const char **argv)
 {
+    IniFile iniFile;
+
     for (const char **arg = argv+1; *arg != 0; arg++) {
         std::string args(*arg);
 
@@ -247,12 +259,36 @@ void ArachnePlugin::parseOptions(const char **argv)
                 throw (PluginException(msg.str()));
             }
         }
+        else if (key == "config") {
+            std::unordered_set<std::string> keys;
+            keys.insert("url");
+            keys.insert("cafile");
+            keys.insert("ignoressl");
+
+            std::ostringstream buf;
+            buf << "Reading config file " << value;
+            log(PLOG_NOTE, buf.str().c_str());
+
+            std::ifstream ifs;
+            ifs.open (value, std::ifstream::in);
+            if (!ifs.is_open()) {
+                throw std::runtime_error("Cannot open config file");
+            }
+            iniFile.load(ifs, keys);
+            ifs.close();
+        }
         else {
             std::stringstream msg;
             msg << "Invalid key: " << key;
             throw (PluginException(msg.str()));
         }
     }
+
+    std::string s;
+    iniFile.get("url", s);
+    url = s;
+    iniFile.get("cafile", _caFile);
+    iniFile.get("ignoressl", _ignoreSsl);
 }
 
 template<typename Socket>
