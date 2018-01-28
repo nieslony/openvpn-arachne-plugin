@@ -14,8 +14,10 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/bind.hpp>
 
+static const std::string FN_IP_FORWARD("/proc/sys/net/ipv4/ip_forward");
+
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
-    : _ignoreSsl(false)
+    : _ignoreSsl(false), _handleIpForwarding(false)
 {
     log_func = in_args->callbacks->plugin_vlog;
     time(&_startupTime);
@@ -24,7 +26,16 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
 
     parseOptions(in_args->argv);
 
+    enableIpForwarding();
+
     _sessionCounter = 0;
+}
+
+ArachnePlugin::~ArachnePlugin()
+{
+    log(PLOG_NOTE, "Unloading Arachne plugin...");
+
+    resetIpForwarding();
 }
 
 const char* ArachnePlugin::getenv(const char* key, const char *envp[])
@@ -264,6 +275,7 @@ void ArachnePlugin::parseOptions(const char **argv)
             keys.insert("url");
             keys.insert("cafile");
             keys.insert("ignoressl");
+            keys.insert("handleipforwarding");
 
             std::ostringstream buf;
             buf << "Reading config file " << value;
@@ -289,6 +301,7 @@ void ArachnePlugin::parseOptions(const char **argv)
     url = s;
     iniFile.get("cafile", _caFile);
     iniFile.get("ignoressl", _ignoreSsl);
+    iniFile.get("handleipforwarding", _handleIpForwarding);
 }
 
 template<typename Socket>
@@ -358,4 +371,70 @@ int ArachnePlugin::handleRequest(Socket &socket, const std::string &userPwd, Cli
     }
 
     return -1;
+}
+
+void ArachnePlugin::enableIpForwarding()
+{
+    if (_handleIpForwarding) {
+        log(PLOG_NOTE, "Enabling IP forwarding");
+
+        std::ifstream ifs;
+        ifs.open(FN_IP_FORWARD);
+        if (!ifs.is_open()) {
+            std::ostringstream buf;
+            buf << "Cannot open " << FN_IP_FORWARD << " for reading";
+            throw PluginException(buf.str());
+        }
+        try {
+            getline(ifs, _oldIpForwarding);
+            ifs.close();
+        }
+        catch (std::exception &ex) {
+            std::ostringstream buf;
+            buf << "Error reading status of IP forwarding from " << FN_IP_FORWARD;
+            throw PluginException(buf.str());
+        }
+
+        std::ofstream ofs;
+        ofs.open(FN_IP_FORWARD);
+        if (!ofs.is_open()) {
+            std::ostringstream buf;
+            buf << "Cannot open " << FN_IP_FORWARD << "=> cannot activate IP forwarding";
+            throw PluginException(buf.str());
+        }
+        ofs << "1" << std::endl;
+        ofs.close();
+    }
+    else {
+        log(PLOG_NOTE, "Leaving IP forwarding untouched");
+    }
+}
+
+void ArachnePlugin::resetIpForwarding()
+{
+    if (_handleIpForwarding) {
+        std::ostringstream buf;
+        buf << "Resetting IP forwarding: " << _oldIpForwarding;
+
+        log(PLOG_NOTE, buf.str().c_str());
+        std::ofstream ofs;
+        ofs.open(FN_IP_FORWARD);
+        if (!ofs.is_open()) {
+            std::ostringstream buf;
+            buf << "Error reading status of IP forwarding from " << FN_IP_FORWARD;
+            throw PluginException(buf.str());
+        }
+        try {
+            ofs << _oldIpForwarding << std::endl;
+            ofs.close();
+        }
+        catch (std::exception &s) {
+            std::ostringstream buf;
+            buf << "Error resetting IP forwarding, cannot write to " << FN_IP_FORWARD;
+            throw PluginException(buf.str());
+        }
+    }
+    else {
+        log(PLOG_NOTE, "Leaving IP forwarding untouched");
+    }
 }

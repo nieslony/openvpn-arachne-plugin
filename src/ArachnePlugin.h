@@ -35,6 +35,8 @@ private:
     long _sessionCounter;
     std::string _caFile;
     bool _ignoreSsl;
+    bool _handleIpForwarding;
+    std::string _oldIpForwarding;
 
     void chop(std::string&);
 
@@ -46,8 +48,12 @@ private:
     template<typename Socket>
     int handleRequest(Socket &socket, const std::string &userPwd, ClientSession* session);
 
+    void enableIpForwarding();
+    void resetIpForwarding();
+
 public:
     ArachnePlugin(const openvpn_plugin_args_open_in*);
+    ~ArachnePlugin();
 
     int userAuthPassword(const char *argv[], const char *envp[], ClientSession*);
 
