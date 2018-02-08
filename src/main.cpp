@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <cstdarg>
+#include <iostream>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -22,12 +23,14 @@ openvpn_plugin_open_v3 (const int version,
     try {
         ArachnePlugin *context = new ArachnePlugin(arguments);
 
-        retptr->type_mask = OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY);
+        retptr->type_mask =
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) |
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_UP) |
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_DOWN)
+        ;
         retptr->handle = (openvpn_plugin_handle_t*) context;
     }
     catch (const std::exception &ex) {
-        //std::cout << "Caught exception: " << ex.what() << std::endl;
-
         va_list a;
         va_end(a);
         arguments->callbacks->plugin_vlog(PLOG_ERR, "Arachne", ex.what(), a);
@@ -49,6 +52,10 @@ openvpn_plugin_func_v3(const int version,
     switch (args->type) {
         case OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY:
             return plugin->userAuthPassword(args->argv, args->envp, session);
+        case OPENVPN_PLUGIN_UP:
+            return plugin->pluginUp(args->argv, args->envp, session);
+        case OPENVPN_PLUGIN_DOWN:
+            return plugin->pluginDown(args->argv, args->envp, session);
         default:
             return OPENVPN_PLUGIN_FUNC_ERROR;
     }
@@ -79,3 +86,4 @@ openvpn_plugin_client_destructor_v1(openvpn_plugin_handle_t handle,
 
     delete session;
 }
+

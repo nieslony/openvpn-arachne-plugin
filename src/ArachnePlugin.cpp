@@ -1,6 +1,7 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
 #include "IniFile.h"
+#include "Firewall.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -99,6 +100,64 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
         log(PLOG_NOTE, session->id(), "Authtication for user %s failed", username.c_str());
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
+}
+
+int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
+    ClientSession* session)
+{
+    std::ostringstream buf;
+    buf << "Opening device " << getenv("dev", envp) << "...";
+    log(PLOG_NOTE, buf.str().c_str());
+
+    Firewall firewall;
+    firewall.init();
+
+    if (_manageFirewall) {
+        try {
+            std::ostringstream buf;
+            buf << "Creating firewall zone " << _firewallZone;
+            log(PLOG_NOTE, buf.str().c_str());
+
+            firewall.createZone(_firewallZone, "tun0");
+        }
+        catch (DBus::Error &ex) {
+            //std::cerr << ex.what() << std::endl;
+            if (ex.name() == Firewall::FIREWALLD1_EXCEPTION) {
+                std::string type;
+                std::string param;
+                Firewall::exceptionType(ex, type, param);
+
+                if (type == Firewall::FIREWALLD1_EX_NAME_CONFLICT) {
+                    std::ostringstream buf;
+                    buf << "Firewall zone " << _firewallZone << " already exists, reusing it";
+                    log(PLOG_NOTE, buf.str().c_str());
+                }
+                else {
+                    std::cerr << "Unhandled DBus::Error " << type << std::endl;
+                    throw ex;
+                }
+            }
+            else {
+                std::cerr << "Unknown exception" << std::endl;
+                throw ex;
+            }
+        }
+    }
+    else {
+        log(PLOG_NOTE, "No firewall zone requested");
+    }
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::pluginDown(const char *argv[], const char *envp[],
+    ClientSession* session)
+{
+    std::ostringstream buf;
+    buf << "Closing device " << getenv("dev", envp);
+    log(PLOG_NOTE, buf.str().c_str());
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
 int ArachnePlugin::http(const Url &url, const std::string &userPwd, ClientSession* session)
@@ -276,6 +335,8 @@ void ArachnePlugin::parseOptions(const char **argv)
             keys.insert("cafile");
             keys.insert("ignoressl");
             keys.insert("handleipforwarding");
+            keys.insert("manageFirewall");
+            keys.insert("firewallZone");
 
             std::ostringstream buf;
             buf << "Reading config file " << value;
@@ -302,6 +363,8 @@ void ArachnePlugin::parseOptions(const char **argv)
     iniFile.get("cafile", _caFile);
     iniFile.get("ignoressl", _ignoreSsl);
     iniFile.get("handleipforwarding", _handleIpForwarding);
+    iniFile.get("manageFirewall", _manageFirewall);
+    iniFile.get("firewallZone", _firewallZone);
 }
 
 template<typename Socket>

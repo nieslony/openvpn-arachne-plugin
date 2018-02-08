@@ -20,6 +20,7 @@ AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
 AC_CHECK_HEADER(boost/asio.hpp)
 AC_CHECK_HEADER(boost/bind.hpp)
 AC_CHECK_HEADER(boost/asio/ssl.hpp)
+AC_CHECK_HEADER(dbus-cxx.h)
 
 AC_SUBST([plugindir])
 

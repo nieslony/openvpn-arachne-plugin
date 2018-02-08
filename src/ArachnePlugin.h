@@ -37,6 +37,8 @@ private:
     bool _ignoreSsl;
     bool _handleIpForwarding;
     std::string _oldIpForwarding;
+    bool _manageFirewall = false;
+    std::string _firewallZone = "arachne-uservpn";
 
     void chop(std::string&);
 
@@ -56,6 +58,8 @@ public:
     ~ArachnePlugin();
 
     int userAuthPassword(const char *argv[], const char *envp[], ClientSession*);
+    int pluginUp(const char *argv[], const char *envp[], ClientSession*);
+    int pluginDown(const char *argv[], const char *envp[], ClientSession*);
 
     ClientSession *createClientSession();
 
