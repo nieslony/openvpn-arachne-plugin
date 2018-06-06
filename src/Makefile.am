@@ -9,4 +9,5 @@ arachne_la_SOURCES = \
 	IniFile.cpp IniFileException.cpp
 
 EXTRA_DIST= \
-	ArachnePlugin.h Url.h ClientSession.h
+	ArachnePlugin.h Url.h ClientSession.h IniFile.h
+
