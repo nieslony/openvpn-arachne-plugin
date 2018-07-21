@@ -171,7 +171,7 @@ int ArachnePlugin::http(const Url &url, const std::string &userPwd, ClientSessio
     if (url.protocol() == "https") {
         log(PLOG_NOTE, session->id(), "Creating SSL socket");
         try {
-            boost::asio::ssl::context ctx(io_service, boost::asio::ssl::context::method::sslv23_client);
+            boost::asio::ssl::context ctx(boost::asio::ssl::context::method::sslv23_client);
             if (_caFile.length() > 0)
                 ctx.load_verify_file(_caFile);
 
