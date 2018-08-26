@@ -15,6 +15,7 @@ Requires:	boost
 %define cxxflags --std=c++11
 %endif
 %if 0%{?fedora_version}
+BuildRequires:	openblas
 %define cxxflags ""
 %endif
 %if 0%{?suse_version}
