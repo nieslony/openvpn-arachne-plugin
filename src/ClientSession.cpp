@@ -8,14 +8,17 @@
 #error "Cannot inclide openvpn-plugin.h"
 #endif
 
-ClientSession::ClientSession(ArachnePlugin &plugin)
-    : _plugin(plugin)
+#include <sstream>
+
+ClientSession::ClientSession(const ArachnePlugin &plugin, long id)
+    : _plugin(plugin), _logger(&plugin, this)
 {
+    _sessionId = id;
 }
 
 ClientSession::~ClientSession()
 {
-    _plugin.log(PLOG_NOTE, _sessionId, "Deleting session");
+    logger() << Logger::note << "Deleting session";
 }
 
 long ClientSession::id() const
