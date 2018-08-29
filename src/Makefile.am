@@ -11,7 +11,7 @@ arachne_la_SOURCES =  FirewallD1.cpp FirewallD1_Config.cpp FirewallD1_Zone.cpp \
 	main.cpp
 
 EXTRA_DIST= \
-<<<<<<< HEAD
+	ArachnePlugin.h Url.h ClientSession.h IniFile.h \
 	ArachnePlugin.h Url.h ClientSession.h FirewallD1.h \
 	FirewallD1_Config_Zone.xml
 
@@ -44,7 +44,3 @@ FirewallD1_Config_Zone_proxy.h: FirewallD1_Config_Zone.xml
 
 clean-local:
 	rm -v *h *xml
-=======
-	ArachnePlugin.h Url.h ClientSession.h IniFile.h
-
->>>>>>> 8d7bbf07646e3b59f4122a01de9818e7e0b13d96
