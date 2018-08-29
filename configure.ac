@@ -17,7 +17,7 @@ AM_PROG_LD
 LT_INIT([disable-static])
 
 AC_CHECK_HEADER(openssl/opensslconf.h)
-AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])/usr/include/openssl/opensslconf.h
+AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
 AC_CHECK_HEADER(boost/asio.hpp)
 AC_CHECK_HEADER(boost/bind.hpp)
 AC_CHECK_HEADER(boost/asio/ssl.hpp)
