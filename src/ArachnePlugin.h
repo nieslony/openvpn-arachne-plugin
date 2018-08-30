@@ -32,7 +32,6 @@ private:
     time_t _startupTime = -1;
     long _sessionCounter = 0;
     Logger *_logger = NULL;
-    Http _http;
 
     Url _authUrl;
     std::string _caFile;
@@ -42,13 +41,6 @@ private:
     bool _manageFirewall = false;
     std::string _firewallZone = "arachne-uservpn";
 
-    void chop(std::string&);
-
-    int http(const Url &url, const std::string& user, std::string password, ClientSession*);
-
-    //std::string base64(const char* in) noexcept;
-
-    //void log(openvpn_plugin_log_flags_t flags, const char *format, ...);
     const char* getenv(const char *key, const char *envp[]);
     void parseOptions(const char **argv);
 
@@ -67,8 +59,6 @@ public:
     int pluginDown(const char *argv[], const char *envp[], ClientSession*);
 
     ClientSession *createClientSession();
-
-    // void log(openvpn_plugin_log_flags_t flags, long sessionId, const char *format, ...);
 
     time_t startupTime() const { return _startupTime; }
     plugin_vlog_t log_func() const { return _log_func; }

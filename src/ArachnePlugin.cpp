@@ -71,7 +71,7 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
     _logger->levelNote();
     session->logger() << "Trying to authenticate user " << username << "..." << std::endl;
 
-    authSuccessfull = _http.get(_authUrl, username, password) == 200;
+    authSuccessfull = session->authUser(_authUrl, username, password);
 
     if (authSuccessfull) {
         _logger->levelNote();
@@ -139,17 +139,6 @@ int ArachnePlugin::pluginDown(const char *argv[], const char *envp[],
     session->logger() << "Closing device " << getenv("dev", envp) << std::endl;
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
-}
-
-void ArachnePlugin::chop(std::string &s)
-{
-    size_t pos;
-
-    while ( (pos = s.find("\r")) != std::string::npos)
-        s.erase(pos, 1);
-
-    while ( (pos = s.find("\n")) != std::string::npos)
-        s.erase(pos, 1);
 }
 
 ClientSession *ArachnePlugin::createClientSession()

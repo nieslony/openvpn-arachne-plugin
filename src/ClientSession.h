@@ -5,6 +5,7 @@
 
 #include "ArachnePlugin.h"
 #include "Logger.h"
+#include "Http.h"
 
 class ClientSession {
 friend ClientSession *ArachnePlugin::createClientSession(void);
@@ -17,10 +18,14 @@ private:
 
 public:
     Logger _logger;
-    long id() const;
-    Logger &logger() { return _logger; }
+    Http _http;
 
     ~ClientSession();
+
+    long id() const;
+    Logger &logger() { return _logger; }
+    bool authUser(const Url &authUrl, const std::string &username, const std::string &password);
+
 };
 
 #endif

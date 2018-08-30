@@ -11,17 +11,23 @@
 #include <sstream>
 
 ClientSession::ClientSession(const ArachnePlugin &plugin, long id)
-    : _plugin(plugin), _logger(&plugin, this)
+    : _plugin(plugin), _logger(&plugin, this), _http(_logger)
 {
     _sessionId = id;
 }
 
 ClientSession::~ClientSession()
 {
-    //logger() << Logger::note << "Deleting session";
+    _logger.levelNote();
+    _logger << "Deleting session" << std::endl;
 }
 
 long ClientSession::id() const
 {
     return _sessionId;
+}
+
+bool ClientSession::authUser(const Url &authUrl, const std::string &username, const std::string &password)
+{
+    return _http.get(authUrl, username, password) == 200;
 }
