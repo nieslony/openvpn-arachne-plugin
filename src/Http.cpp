@@ -113,6 +113,8 @@ int Http::handleRequest(Socket &socket,
                         const Url& url,
                         const std::string &user, const std::string &password)
 {
+    _logger.levelDebug();
+    _logger << "GET " << url.str() << std::endl;
     std::string userPwd = user + ":" + password;
     std::string userPwdBase64 = base64(userPwd.c_str());
 
@@ -141,7 +143,8 @@ int Http::handleRequest(Socket &socket,
     if (!response_stream || http_version.substr(0, 5) != "HTTP/") {
         throw HttpException("Invalid HTTP response");
     }
-
+    _logger.levelNote();
+    _logger << "Got status " << status_code << std::endl;
     boost::asio::read_until(socket, response, "\r\n\r\n");
 
     std::string header;
@@ -152,10 +155,17 @@ int Http::handleRequest(Socket &socket,
         std::string name = header.substr(0, sep);
         std::string value = header .substr(sep+2);
         headers[name] = value;
+
+        _logger.levelDebug();
+        _logger << "Name: " << name << " | Value: " << value << std::endl;
     }
 
     if (status_code == 302) {
         Url location = headers["Location"];
+        if (location.autoPort())
+            location.port(url.port());
+        _logger.levelNote();
+        _logger << "Redirecting to " << headers["Location"] << std::endl;
         return get(location, user, password);
     }
 

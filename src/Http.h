@@ -6,6 +6,7 @@
 
 class ClientSession;
 class Url;
+class Logger;
 
 class Request {
 public:
@@ -35,13 +36,14 @@ public:
 
 class Http {
 public:
-    Http() {}
+    Http(Logger &logger) : _logger(logger) {}
     ~Http() {}
 
     int get(const Url &url,
             const std::string &user, const std::string &password);
 
 private:
+    Logger &_logger;
     std::string _caFile;
     bool _ignoreSsl = false;
 
