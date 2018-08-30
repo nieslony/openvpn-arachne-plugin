@@ -10,6 +10,8 @@ private:
     std::string _path;
     unsigned _port;
 
+    bool _autoPort;
+
     void init(const std::string&);
 
 public:
@@ -24,7 +26,9 @@ public:
     const std::string &path() const { return _path; };
     unsigned port() const { return _port; };
 
-    void setPort(unsigned p) { _port = p; }
+    void port(unsigned p) { _port = p; }
+
+    bool autoPort() { return _autoPort; }
 };
 
 #endif

@@ -19,12 +19,18 @@ void Url::init(const std::string& url)
 
         size_t begin_port = _host.find(":");
 
-        if (_protocol == "http")
+        if (_protocol == "http") {
             _port = 80;
-        else if(_protocol == "https")
+            _autoPort = true;
+        }
+        else if(_protocol == "https") {
             _port = 443;
-        else
+            _autoPort = true;
+        }
+        else {
             _port = 65535;
+            _autoPort = true;
+        }
 
         if (begin_port != std::string::npos) {
             std::string port_str = _host.substr(begin_port+1);
