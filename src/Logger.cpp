@@ -9,7 +9,7 @@ LoggerBuf::LoggerBuf(const ArachnePlugin *plugin, const ClientSession *session)
 {
     _plugin = plugin;
     _session = session;
-    _line.str("");
+    _line = std::stringstream();
     _level = PLOG_NOTE;
 }
 
@@ -47,11 +47,23 @@ int LoggerBuf::sync()
 
     std::string prefix = s.str();
     std::string msg = _line.str();
+    chop(msg);
 
     do_sync(_plugin, _session, _level, prefix.c_str(), msg.c_str());
 
-    _line.str("");
-    _line.clear();
+    _line = std::stringstream();
 
     return 0;
 }
+
+void LoggerBuf::chop(std::string &s)
+{
+    size_t pos;
+
+    while ( (pos = s.find("\r")) != std::string::npos)
+        s.erase(pos, 1);
+
+    while ( (pos = s.find("\n")) != std::string::npos)
+        s.erase(pos, 1);
+}
+

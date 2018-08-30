@@ -40,6 +40,8 @@ private:
 
     std::stringstream _line;
     openvpn_plugin_log_flags_t _level;
+
+    void chop(std::string &s);
 };
 
 class Logger : public std::ostream {
@@ -51,6 +53,7 @@ public:
     void levelNote() { _loggerBuf.level(PLOG_NOTE); }
     void levelWarn() { _loggerBuf.level(PLOG_WARN); }
     void levelErr() { _loggerBuf.level(PLOG_ERR); }
+    void levelDebug() { _loggerBuf.level(PLOG_DEBUG); }
 
 private:
     LoggerBuf _loggerBuf;
