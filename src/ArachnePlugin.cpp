@@ -25,7 +25,8 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
     time(&_startupTime);
     _logger = new Logger(this);
 
-    *_logger << Logger::note << "Initializing plugin..." << std::endl;
+    _logger->levelNote();
+    *_logger << "Initializing plugin..." << std::endl;
 
     parseOptions(in_args->argv);
 
@@ -36,7 +37,8 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
 
 ArachnePlugin::~ArachnePlugin()
 {
-    *_logger << Logger::note << "Unloading Arachne plugin..." << std::endl;
+    _logger->levelNote();
+    *_logger << "Unloading Arachne plugin..." << std::endl;
 
     resetIpForwarding();
 }
@@ -59,19 +61,6 @@ const char* ArachnePlugin::getenv(const char* key, const char *envp[])
     return "";
 }
 
-/*oid ArachnePlugin::log(openvpn_plugin_log_flags_t flags, long sessionId, const char *msg, ...)
-{
-    va_list argptr;
-    va_start(argptr, msg);
-
-    std::stringstream id;
-    id << "Arachne_" << std::hex << _startupTime << "-" << sessionId;
-
-    _log_func(flags, id.str().c_str(), msg, argptr);
-
-    va_end(argptr);
-}*/
-
 int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
     ClientSession* session)
 {
@@ -79,17 +68,19 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
     std::string username(getenv("username", envp));
     std::string password(getenv("password", envp));
 
-    //log(PLOG_NOTE, session->id(), "Trying to authenticate user %s...", username.c_str());
-    session->logger() << Logger::note << "Trying to authenticate user " << username << "..." << std::endl;
+    _logger->levelNote();
+    session->logger() << "Trying to authenticate user " << username << "..." << std::endl;
 
-    authSuccessfull = _http.get(_authUrl, username, password, session) == 200;
+    authSuccessfull = _http.get(_authUrl, username, password) == 200;
 
     if (authSuccessfull) {
-        session->logger() << Logger::note << "User " << username << " authenticated successfully" << std::endl;
+        _logger->levelNote();
+        session->logger() << "User " << username << " authenticated successfully" << std::endl;
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     }
     else {
-        session->logger() << Logger::err << "Authtication for user " << username << " failed" << std::endl;
+        _logger->levelErr();
+        session->logger() << "Authentication for user " << username << " failed" << std::endl;
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 }
@@ -97,16 +88,16 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
 int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
     ClientSession* session)
 {
-    session->logger() << Logger::note <<
-        "Opening device " << getenv("dev", envp) << "..." << std::endl;
+    _logger->levelNote();
+    session->logger() << "Opening device " << getenv("dev", envp) << "..." << std::endl;
 
     Firewall firewall;
     firewall.init();
 
     if (_manageFirewall) {
         try {
-            session->logger() << Logger::note <<
-                "Creating firewall zone " << _firewallZone;
+            _logger->levelNote();
+            session->logger() << "Creating firewall zone " << _firewallZone << std::endl;
             firewall.createZone(_firewallZone, "tun0");
         }
         catch (DBus::Error &ex) {
@@ -117,24 +108,25 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
                 Firewall::exceptionType(ex, type, param);
 
                 if (type == Firewall::FIREWALLD1_EX_NAME_CONFLICT) {
-                    session->logger() << Logger::note <<
-                        "Firewall zone " << _firewallZone << " already exists, reusing it";
+                    _logger->levelNote();
+                    session->logger() << "Firewall zone " << _firewallZone << " already exists, reusing it";
                 }
                 else {
-                    session->logger() << Logger::err <<
-                        "Unhandled DBus::Error " << type << std::endl;
+                    _logger->levelErr();
+                    session->logger() << "Unhandled DBus::Error " << type << std::endl;
                     throw ex;
                 }
             }
             else {
-                session->logger() << Logger::err <<
-                    "Unknown exception" << std::endl;
+                _logger->levelErr();
+                session->logger() << "Unknown exception" << std::endl;
                 throw ex;
             }
         }
     }
     else {
-        session->logger() << Logger::note << "No firewall zone requested";
+        _logger->levelNote();
+        session->logger() << "No firewall zone requested" << std::endl;
     }
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
@@ -143,8 +135,8 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
 int ArachnePlugin::pluginDown(const char *argv[], const char *envp[],
     ClientSession* session)
 {
-    session->logger() << Logger::note <<
-        "Closing device " << getenv("dev", envp);
+    _logger->levelNote();
+    session->logger() << "Closing device " << getenv("dev", envp) << std::endl;
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
@@ -212,8 +204,8 @@ void ArachnePlugin::parseOptions(const char **argv)
             keys.insert("firewallZone");
 
             std::ostringstream buf;
-            *_logger << Logger::note <<
-                "Reading config file " << value;
+            _logger->levelNote();
+            *_logger << "Reading config file " << value << std::endl;
 
             std::ifstream ifs;
             ifs.open (value, std::ifstream::in);
@@ -243,7 +235,8 @@ void ArachnePlugin::parseOptions(const char **argv)
 void ArachnePlugin::enableIpForwarding()
 {
     if (_handleIpForwarding) {
-        *_logger << Logger::note << "Enabling IP forwarding";
+        _logger->levelNote();
+        *_logger << "Enabling IP forwarding" << std::endl;
 
         std::ifstream ifs;
         ifs.open(FN_IP_FORWARD);
@@ -273,20 +266,22 @@ void ArachnePlugin::enableIpForwarding()
         ofs.close();
     }
     else {
-        *_logger << Logger::note << "Leaving IP forwarding untouched";
+        _logger->levelNote();
+        *_logger << "Leaving IP forwarding untouched"  << std::endl;
     }
 }
 
 void ArachnePlugin::resetIpForwarding()
 {
     if (_handleIpForwarding) {
-        *_logger << Logger::note << "Resetting IP forwarding: " << _oldIpForwarding;
+        _logger->levelNote();
+        *_logger << "Resetting IP forwarding: " << _oldIpForwarding << std::endl;
 
         std::ofstream ofs;
         ofs.open(FN_IP_FORWARD);
         if (!ofs.is_open()) {
             std::ostringstream buf;
-            buf << "Error reading status of IP forwarding from " << FN_IP_FORWARD;
+            buf << "Error reading status of IP forwarding from " << FN_IP_FORWARD << std::endl;
             throw PluginException(buf.str());
         }
         try {
@@ -295,11 +290,12 @@ void ArachnePlugin::resetIpForwarding()
         }
         catch (std::exception &s) {
             std::ostringstream buf;
-            buf << "Error resetting IP forwarding, cannot write to " << FN_IP_FORWARD;
+            buf << "Error resetting IP forwarding, cannot write to " << FN_IP_FORWARD << std::endl;
             throw PluginException(buf.str());
         }
     }
     else {
-        *_logger << "Leaving IP forwarding untouched";
+        _logger->levelNote();
+        *_logger << "Leaving IP forwarding untouched" << std::endl;
     }
 }

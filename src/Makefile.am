@@ -1,7 +1,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 plugin_LTLIBRARIES = arachne.la
-arachne_la_CXXFLAGS = -g -std=c++11 -I/usr/include/dbus-c++-1/
+arachne_la_CXXFLAGS = -g -std=c++11 -I/usr/include/dbus-c++-1/ -O0
 arachne_la_LDFLAGS = -module -avoid-version -shared
 arachne_la_LIBADD = -lboost_system -ldbus-c++-1
 arachne_la_SOURCES =  FirewallD1.cpp FirewallD1_Config.cpp FirewallD1_Zone.cpp \

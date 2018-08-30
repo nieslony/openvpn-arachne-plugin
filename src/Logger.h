@@ -29,8 +29,7 @@ public:
 
     std::streambuf::int_type overflow( std::streambuf::int_type ch = EOF);
 
-    //void linePrefix(const std::string& lp) { _linePrefix = lp; }
-    void flags(openvpn_plugin_log_flags_t f) { _flags = f; }
+    void level(openvpn_plugin_log_flags_t l) { _level = l; std::cout << _line.str() << std::endl; }
 
 protected:
     virtual int sync();
@@ -40,8 +39,7 @@ private:
     const ClientSession *_session;
 
     std::stringstream _line;
-    // std::string _linePrefix;
-    openvpn_plugin_log_flags_t _flags;
+    openvpn_plugin_log_flags_t _level;
 };
 
 class Logger : public std::ostream {
@@ -50,11 +48,9 @@ public:
         : std::ostream(&_loggerBuf), std::ios(0), _loggerBuf(plugin, session)
     {}
 
-    // void linePrefix(const std::string& lp) { _loggerBuf.linePrefix(lp); }
-
-    static Logger &err(Logger&);
-    static Logger &warn(Logger&);
-    static Logger &note(Logger&);
+    void levelNote() { _loggerBuf.level(PLOG_NOTE); }
+    void levelWarn() { _loggerBuf.level(PLOG_WARN); }
+    void levelErr() { _loggerBuf.level(PLOG_ERR); }
 
 private:
     LoggerBuf _loggerBuf;

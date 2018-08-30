@@ -69,7 +69,7 @@ std::string Http::base64(const std::string &in) noexcept
     return os.str();
 }
 
-int Http::get(const Url &url, const std::string &user, const std::string &password, ClientSession* session)
+int Http::get(const Url &url, const std::string &user, const std::string &password)
 {
     boost::asio::io_service io_service;
 
@@ -90,13 +90,13 @@ int Http::get(const Url &url, const std::string &user, const std::string &passwo
         connect(socket.lowest_layer(), it);
         socket.handshake(boost::asio::ssl::stream_base::handshake_type::client);
 
-        return handleRequest(socket, url, user, password, session);
+        return handleRequest(socket, url, user, password);
     }
     else if (url.protocol() == "http") {
         boost::asio::ip::tcp::socket socket(io_service);
         boost::asio::connect(socket, it);
 
-        return handleRequest(socket, url, user, password, session);
+        return handleRequest(socket, url, user, password);
     }
     else {
         std::stringstream msg;
@@ -111,8 +111,7 @@ int Http::get(const Url &url, const std::string &user, const std::string &passwo
 template<typename Socket>
 int Http::handleRequest(Socket &socket,
                         const Url& url,
-                        const std::string &user, const std::string &password,
-                        ClientSession* session)
+                        const std::string &user, const std::string &password)
 {
     std::string userPwd = user + ":" + password;
     std::string userPwdBase64 = base64(userPwd.c_str());
@@ -157,7 +156,7 @@ int Http::handleRequest(Socket &socket,
 
     if (status_code == 302) {
         Url location = headers["Location"];
-        return get(location, user, password, session);
+        return get(location, user, password);
     }
 
     return status_code;

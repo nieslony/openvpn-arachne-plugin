@@ -3,11 +3,14 @@
 #include "ClientSession.h"
 
 #include <stdio.h>
+#include <stdexcept>
 
 LoggerBuf::LoggerBuf(const ArachnePlugin *plugin, const ClientSession *session)
 {
     _plugin = plugin;
     _session = session;
+    _line.str("");
+    _level = PLOG_NOTE;
 }
 
 std::streambuf::int_type LoggerBuf::overflow(std::streambuf::int_type ch)
@@ -45,27 +48,10 @@ int LoggerBuf::sync()
     std::string prefix = s.str();
     std::string msg = _line.str();
 
-    do_sync(_plugin, _session, _flags, prefix.c_str(), msg.c_str());
+    do_sync(_plugin, _session, _level, prefix.c_str(), msg.c_str());
 
     _line.str("");
+    _line.clear();
 
     return 0;
-}
-
-Logger &Logger::note(Logger& logger)
-{
-    logger._loggerBuf.flags(PLOG_NOTE);
-    return logger;
-}
-
-Logger &Logger::warn(Logger& logger)
-{
-    logger._loggerBuf.flags(PLOG_WARN);
-    return logger;
-}
-
-Logger &Logger::err(Logger& logger)
-{
-    logger._loggerBuf.flags(PLOG_ERR);
-    return logger;
 }

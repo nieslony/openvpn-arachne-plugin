@@ -18,7 +18,7 @@ ClientSession::ClientSession(const ArachnePlugin &plugin, long id)
 
 ClientSession::~ClientSession()
 {
-    logger() << Logger::note << "Deleting session";
+    //logger() << Logger::note << "Deleting session";
 }
 
 long ClientSession::id() const

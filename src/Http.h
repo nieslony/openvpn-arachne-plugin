@@ -7,14 +7,21 @@
 class ClientSession;
 class Url;
 
+class Request {
+public:
+    Request(std::string &url);
+    void header(const std::string &key, const std::string &value);
+    void basicAuth(const std::string &username, const std::string &password);
+};
+
 class Response {
 private:
     int _status;
-    std::map<std::string, std::string> headers;
+    std::map<const std::string, const std::string> headers;
 
 public:
     int status() const;
-    std::string header() const;
+    std::string header(const std::string &name) const;
     std::ostream &content() const;
 
     void caFile(const std::string &fn);
@@ -32,8 +39,7 @@ public:
     ~Http() {}
 
     int get(const Url &url,
-            const std::string &user, const std::string &password,
-            ClientSession* session);
+            const std::string &user, const std::string &password);
 
 private:
     std::string _caFile;
@@ -44,8 +50,7 @@ private:
     template<typename Socket>
     int handleRequest(Socket &socket,
                       const Url& url,
-                      const std::string &user, const std::string &password,
-                      ClientSession* session);
+                      const std::string &user, const std::string &password);
 
     static void chop(std::string &s);
 
