@@ -5,8 +5,10 @@ arachne_la_CXXFLAGS = -g -std=c++11 -I/usr/include/dbus-c++-1/
 arachne_la_LDFLAGS = -module -avoid-version -shared
 arachne_la_LIBADD = -lboost_system -ldbus-c++-1
 arachne_la_SOURCES =  FirewallD1.cpp FirewallD1_Config.cpp FirewallD1_Zone.cpp \
-	FirewallD1_Config_Zone.cpp Http.cpp Logger.cpp \
-	ArachnePlugin.cpp Url.cpp ClientSession.cpp \
+	FirewallD1_Config_Zone.cpp \
+	Http.cpp Request.cpp Response.cpp Url.cpp \
+	Logger.cpp \
+	ArachnePlugin.cpp ClientSession.cpp \
 	IniFile.cpp IniFileException.cpp Firewall.cpp \
 	main.cpp
 

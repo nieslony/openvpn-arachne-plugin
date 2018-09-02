@@ -18,7 +18,7 @@ private:
 
 public:
     Logger _logger;
-    Http _http;
+    http::Http _http;
 
     ~ClientSession();
 

@@ -29,5 +29,18 @@ long ClientSession::id() const
 
 bool ClientSession::authUser(const Url &authUrl, const std::string &username, const std::string &password)
 {
-    return _http.get(authUrl, username, password) == 200;
+    try {
+        http::Request request(authUrl);
+        request.basicAuth(username, password);
+
+        http::Response response;
+        _http.get(request, response);
+        return response.status() == 200;
+    }
+    catch (const std::runtime_error &ex) {
+        _logger.levelErr();
+        _logger << ex.what() << std::endl;
+
+        return false;
+    }
 }
