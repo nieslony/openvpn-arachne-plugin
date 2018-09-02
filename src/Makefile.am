@@ -16,7 +16,7 @@ EXTRA_DIST= \
 	ArachnePlugin.h Url.h ClientSession.h IniFile.h \
 	ArachnePlugin.h Url.h ClientSession.h FirewallD1.h \
 	Http.h Logger.h \
-	FirewallD1_Config_Zone.xml
+	FirewallD1_Config.xml FirewallD1_Config_Zone.xml FirewallD1.xml
 
 BUILT_SOURCES = FirewallD1_proxy.h FirewallD1_Config_proxy.h \
 	FirewallD1_Config_Zone_proxy.h
