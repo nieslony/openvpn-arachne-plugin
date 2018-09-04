@@ -29,7 +29,7 @@ public:
 
     std::streambuf::int_type overflow( std::streambuf::int_type ch = EOF);
 
-    void level(openvpn_plugin_log_flags_t l) { _level = l; std::cout << _line.str() << std::endl; }
+    void level(openvpn_plugin_log_flags_t l) { _level = l; }
 
 protected:
     virtual int sync();
