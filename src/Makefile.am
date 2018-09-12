@@ -9,7 +9,7 @@ arachne_la_SOURCES =  FirewallD1.cpp FirewallD1_Config.cpp FirewallD1_Zone.cpp \
 	Http.cpp Request.cpp Response.cpp Url.cpp \
 	Logger.cpp \
 	ArachnePlugin.cpp ClientSession.cpp \
-	IniFile.cpp IniFileException.cpp Firewall.cpp \
+	IniFile.cpp Firewall.cpp \
 	main.cpp
 
 EXTRA_DIST= \
