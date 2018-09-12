@@ -15,6 +15,12 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/bind.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/foreach.hpp>
+
+#define URL_AUTH     "/auth"
+#define URL_FIREWALL "/firewall"
 
 static const std::string FN_IP_FORWARD("/proc/sys/net/ipv4/ip_forward");
 
@@ -61,8 +67,58 @@ const char* ArachnePlugin::getenv(const char* key, const char *envp[])
     return "";
 }
 
+int ArachnePlugin::clientConnect(const char *argv[], const char *envp[], ClientSession* session) noexcept
+{
+    session->logger().levelNote();
+    session->logger() << "Client connected" << std::endl;
+    session->logger() << "username: " << getenv("username", envp) << std::endl;
+    session->logger() << "password: " << getenv("password", envp) << std::endl;
+    session->logger() << "ifconfig_remote: " << getenv("ifconfig_remote", envp) << std::endl;
+    session->logger() << "ifconfig_local: " << getenv("ifconfig_local", envp) << std::endl;
+    session->logger() << "ifconfig_pool_local_ip: " << getenv("ifconfig_pool_local_ip", envp) << std::endl;
+    session->logger() << "trusted_ip: " << getenv("trusted_ip", envp) << std::endl;
+
+    Url url(_authUrl);
+    url.path(_authUrl.path() + URL_FIREWALL);
+    boost::property_tree::ptree json;
+    std::cout << "----- Get Json -----" << std::endl;
+    try {
+        session->getFirewallConfig(url, json);
+    }
+    catch (const std::exception &ex) {
+        session->logger().levelErr();
+        session->logger() << "Cannot parse json. " << ex.what() << std::endl;
+        return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+
+    std::cout << "----- Json -----" << std::endl;
+    BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json.get_child("incoming"))
+    {
+        std::string whatType = v.second.get<std::string>("whatType");
+        std::string whereType = v.second.get<std::string>("whereType");
+        std::stringstream richRule;
+
+        richRule << "rule family=\"ipv4\" "
+            << "source address=\"" << getenv("ifconfig_pool_local_ip", envp) << "\" ";
+
+        if (whereType == "Hostname") {
+            std::string address = v.second.get<std::string>("whereHostname");
+            richRule << "destination address=\"" << address << "\" ";
+        }
+
+        if (whatType == "Service")
+            richRule
+                << "service name=\"" << v.second.get<std::string>("whatService") << "\" ";
+
+        std::cout << richRule.str() << std::endl;
+    }
+    std::cout << "----- Json -----" << std::endl;
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
 int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
-    ClientSession* session)
+    ClientSession* session) noexcept
 {
     bool authSuccessfull = true;
     std::string username(getenv("username", envp));
@@ -71,7 +127,9 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
     _logger->levelNote();
     session->logger() << "Trying to authenticate user " << username << "..." << std::endl;
 
-    authSuccessfull = session->authUser(_authUrl, username, password);
+    Url url(_authUrl);
+    url.path(_authUrl.path() + URL_AUTH);
+    authSuccessfull = session->authUser(url, username, password);
 
     if (authSuccessfull) {
         _logger->levelNote();
@@ -86,7 +144,7 @@ int ArachnePlugin::userAuthPassword(const char *argv[], const char *envp[],
 }
 
 int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
-    ClientSession* session)
+    ClientSession* session) noexcept
 {
     _logger->levelNote();
     session->logger() << "Opening device " << getenv("dev", envp) << "..." << std::endl;
@@ -133,7 +191,7 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
 }
 
 int ArachnePlugin::pluginDown(const char *argv[], const char *envp[],
-    ClientSession* session)
+    ClientSession* session) noexcept
 {
     _logger->levelNote();
     session->logger() << "Closing device " << getenv("dev", envp) << std::endl;
@@ -184,13 +242,14 @@ void ArachnePlugin::parseOptions(const char **argv)
             }
         }
         else if (key == "config") {
-            std::unordered_set<std::string> keys;
-            keys.insert("url");
-            keys.insert("cafile");
-            keys.insert("ignoressl");
-            keys.insert("handleipforwarding");
-            keys.insert("manageFirewall");
-            keys.insert("firewallZone");
+            std::string authUrl = _authUrl.str();
+            IniFile iniFile;
+            iniFile.insert("url", authUrl);
+            iniFile.insert("cafile", _caFile);
+            iniFile.insert("ignoressl", _ignoreSsl);
+            iniFile.insert("handleipforwarding", _handleIpForwarding);
+            iniFile.insert("manageFirewall", _manageFirewall);
+            iniFile.insert("firewallZone", _firewallZone);
 
             std::ostringstream buf;
             _logger->levelNote();
@@ -201,8 +260,10 @@ void ArachnePlugin::parseOptions(const char **argv)
             if (!ifs.is_open()) {
                 throw std::runtime_error("Cannot open config file");
             }
-            iniFile.load(ifs, keys);
+            iniFile.load(ifs);
             ifs.close();
+
+            _authUrl = Url(authUrl);
         }
         else {
             std::stringstream msg;
@@ -210,15 +271,6 @@ void ArachnePlugin::parseOptions(const char **argv)
             throw (PluginException(msg.str()));
         }
     }
-
-    std::string s;
-    if (iniFile.get("url", s))
-        _authUrl = s;
-    iniFile.get("cafile", _caFile);
-    iniFile.get("ignoressl", _ignoreSsl);
-    iniFile.get("handleipforwarding", _handleIpForwarding);
-    iniFile.get("manageFirewall", _manageFirewall);
-    iniFile.get("firewallZone", _firewallZone);
 }
 
 void ArachnePlugin::enableIpForwarding()

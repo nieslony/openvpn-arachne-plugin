@@ -54,9 +54,12 @@ public:
     ArachnePlugin(const openvpn_plugin_args_open_in*);
     ~ArachnePlugin();
 
-    int userAuthPassword(const char *argv[], const char *envp[], ClientSession*);
-    int pluginUp(const char *argv[], const char *envp[], ClientSession*);
-    int pluginDown(const char *argv[], const char *envp[], ClientSession*);
+    bool ignoreSsl() const { return _ignoreSsl; }
+
+    int userAuthPassword(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
     ClientSession *createClientSession();
 

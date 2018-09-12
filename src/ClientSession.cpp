@@ -1,5 +1,7 @@
 #include "ClientSession.h"
 
+#include <boost/property_tree/json_parser.hpp>
+
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
 #elif defined HAVE_OPENVPN_OPENVPN_PLUGIN_H
@@ -14,6 +16,7 @@ ClientSession::ClientSession(const ArachnePlugin &plugin, long id)
     : _plugin(plugin), _logger(&plugin, this), _http(_logger)
 {
     _sessionId = id;
+    _http.ignoreSsl(plugin.ignoreSsl());
 }
 
 ClientSession::~ClientSession()
@@ -35,6 +38,10 @@ bool ClientSession::authUser(const Url &authUrl, const std::string &username, co
 
         http::Response response;
         _http.get(request, response);
+
+        _username = username;
+        _password = password;
+
         return response.status() == 200;
     }
     catch (const std::runtime_error &ex) {
@@ -43,4 +50,19 @@ bool ClientSession::authUser(const Url &authUrl, const std::string &username, co
 
         return false;
     }
+}
+
+void ClientSession::getFirewallConfig(const Url &url, boost::property_tree::ptree &json)
+{
+    _logger.levelNote();
+    _logger << "Getting firewall configuration" << std::endl;
+
+    http::Request request(url);
+    request.basicAuth(_username, _password);
+
+    http::Response response;
+    std::stringstream content;
+    _http.get(request, response, content);
+
+    boost::property_tree::read_json(content, json);
 }
