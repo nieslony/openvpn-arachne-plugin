@@ -6,6 +6,7 @@
 
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -49,6 +50,15 @@ private:
 
     void enableIpForwarding();
     void resetIpForwarding();
+
+    int setupFirewall(const std::string &clientIp, ClientSession *session) noexcept;
+    int getFirewallWhats(boost::property_tree::ptree::value_type &node,
+                         std::vector<std::string> &whats,
+                          ClientSession *session) noexcept;
+    int getFirewallWheres(boost::property_tree::ptree::value_type &node,
+                          std::vector<std::string> &wheres,
+                          ClientSession *session
+                         ) noexcept;
 
 public:
     ArachnePlugin(const openvpn_plugin_args_open_in*);

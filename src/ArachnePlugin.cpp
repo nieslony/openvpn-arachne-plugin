@@ -67,21 +67,116 @@ const char* ArachnePlugin::getenv(const char* key, const char *envp[])
     return "";
 }
 
-int ArachnePlugin::clientConnect(const char *argv[], const char *envp[], ClientSession* session) noexcept
+int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &node,
+                                    std::vector<std::string> &whats,
+                          ClientSession *session) noexcept
 {
-    session->logger().levelNote();
-    session->logger() << "Client connected" << std::endl;
-    session->logger() << "username: " << getenv("username", envp) << std::endl;
-    session->logger() << "password: " << getenv("password", envp) << std::endl;
-    session->logger() << "ifconfig_remote: " << getenv("ifconfig_remote", envp) << std::endl;
-    session->logger() << "ifconfig_local: " << getenv("ifconfig_local", envp) << std::endl;
-    session->logger() << "ifconfig_pool_local_ip: " << getenv("ifconfig_pool_local_ip", envp) << std::endl;
-    session->logger() << "trusted_ip: " << getenv("trusted_ip", envp) << std::endl;
+    std::string whatType = node.second.get<std::string>("whatType");
 
+    if (whatType == "Service") {
+        std::stringstream str;
+        str << "service name=\"" << node.second.get<std::string>("whatService") << "\"";
+        whats.push_back(str.str());
+    }
+    else if (whatType == "Everything") {
+    }
+    else if (whatType == "PortListProtocol") {
+        std::string protocol = node.second.get<std::string>("whatProtocol");
+        BOOST_FOREACH(boost::property_tree::ptree::value_type &port, node.second.get_child("whatPorts")) {
+            std::stringstream str;
+            str << "port port=\""  << port.second.get_value<std::string>() << "\" "
+                << "protocol=\"" << protocol << "\"";
+            whats.push_back(str.str());
+        }
+    }
+    else if (whatType == "PortProtocol") {
+        std::string protocol = node.second.get<std::string>("whatProtocol");
+        std::string port = node.second.get<std::string>("whatPort");
+
+        std::stringstream str;
+        str << "port port=\"" << port << "\" protocol=\"" << protocol << "\"";
+        whats.push_back(str.str());
+    }
+    else if (whatType == "PortRangeProtocol") {
+        std::string protocol = node.second.get<std::string>("whatProtocol");
+        std::string portFrom = node.second.get<std::string>("whatPortFrom");
+        std::string portTo = node.second.get<std::string>("whatPortTo");
+
+        std::stringstream str;
+        str << "port port=\"" << portFrom << "-" << portTo << "\" protocol=\"" << protocol << "\"";
+        whats.push_back(str.str());
+    }
+    else {
+        session->logger().levelErr();
+        session->logger() << "Invalid whatType: " << whatType << std::endl;
+        return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::getFirewallWheres(boost::property_tree::ptree::value_type &node,
+                                     std::vector<std::string> &wheres,
+                          ClientSession *session) noexcept
+{
+    std::string whereType = node.second.get<std::string>("whereType");
+    if (whereType == "Hostname") {
+        std::string hostname;
+        try {
+            hostname = node.second.get<std::string>("whereHostname");
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot find hostname JSON reply: "
+                << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+        try {
+            boost::asio::io_service io_service;
+            boost::asio::ip::tcp::resolver resolver(io_service);
+            boost::asio::ip::tcp::resolver::query query(hostname, "");
+            boost::asio::ip::tcp::resolver::iterator host = resolver.resolve(query);
+            boost::asio::ip::tcp::resolver::iterator end;
+            boost::asio::ip::tcp::endpoint endpoint;
+            while (host != end) {
+                endpoint = *host++;
+                std::string address = endpoint.address().to_string();
+                wheres.push_back(address);
+            }
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot resolve hostname " << hostname
+                << ": " << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+    }
+    else if (whereType == "Network") {
+        try {
+            std::string network = node.second.get<std::string>("whereNetwork");
+            std::string mask = node.second.get<std::string>("whereMask");
+            wheres.push_back(network + "/" + mask);
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot find network or mask: " << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+    }
+    else {
+        session->logger().levelErr();
+        session->logger() << "Invalid whereType: " << whereType << std::endl;
+        return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *session) noexcept
+{
     Url url(_authUrl);
     url.path(_authUrl.path() + URL_FIREWALL);
     boost::property_tree::ptree json;
-    std::cout << "----- Get Json -----" << std::endl;
     try {
         session->getFirewallConfig(url, json);
     }
@@ -91,28 +186,49 @@ int ArachnePlugin::clientConnect(const char *argv[], const char *envp[], ClientS
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 
-    std::cout << "----- Json -----" << std::endl;
     BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json.get_child("incoming"))
     {
-        std::string whatType = v.second.get<std::string>("whatType");
-        std::string whereType = v.second.get<std::string>("whereType");
-        std::stringstream richRule;
+        std::vector<std::string> wheres;
+        std::vector<std::string> whats;
 
-        richRule << "rule family=\"ipv4\" "
-            << "source address=\"" << getenv("ifconfig_pool_local_ip", envp) << "\" ";
+        int ret;
+        if (ret = getFirewallWheres(v, wheres, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
+            return ret;
+        if (ret = ret = getFirewallWhats(v, whats, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
+            return ret;
 
-        if (whereType == "Hostname") {
-            std::string address = v.second.get<std::string>("whereHostname");
-            richRule << "destination address=\"" << address << "\" ";
+        for (std::vector<std::string>::iterator where = wheres.begin(); where != wheres.end(); ++where) {
+            for (std::vector<std::string>::iterator what = whats.begin(); what != whats.end(); ++what) {
+                std::stringstream str;
+                str
+                    << "rule "
+                    << "source address=\"" << clientIp << "\" "
+                    << "destination address=\"" << *where << "\" "
+                    << *what << " "
+                    << "accept";
+
+                std::cout << str.str() << std::endl;
+            }
         }
-
-        if (whatType == "Service")
-            richRule
-                << "service name=\"" << v.second.get<std::string>("whatService") << "\" ";
-
-        std::cout << richRule.str() << std::endl;
     }
-    std::cout << "----- Json -----" << std::endl;
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::clientConnect(const char *argv[], const char *envp[], ClientSession* session) noexcept
+{
+    session->logger().levelNote();
+    session->logger() << "Client connected" << std::endl;
+
+    if (_manageFirewall) {
+        int ret = setupFirewall(getenv("ifconfig_pool_remote_ip", envp), session);
+        if (ret != OPENVPN_PLUGIN_FUNC_SUCCESS)
+            return ret;
+    }
+    else {
+        session->logger().levelNote();
+        session->logger() << "Firewall management disabled => no rules" << std::endl;
+    }
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
