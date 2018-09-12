@@ -7,6 +7,7 @@
 #include <map>
 #include <ostream>
 #include <sstream>
+#include <iostream>
 
 namespace http {
 
@@ -51,15 +52,14 @@ void Request::basicAuth(const std::string &username, const std::string &password
 
 std::ostream &operator<<(std::ostream& os, const Request& r)
 {
-    os << "GET " << r.url().path() << " HTTP/1.0\r\n";
+    os << "GET " << r.url().path() << " HTTP/1.1\r\n";
     os << "Host: " << r.url().host() << "\r\n";
     os << "Accept: */*\r\n";
     os << "Connection: close\r\n";
 
-    for (auto it = r._headers.begin(); it != r._headers.end(); ++it)
+    for (auto it = r._headers.begin(); it != r._headers.end(); ++it) {
         os << (*it).first << ": " << (*it).second << "\r\n";
-    os << "\r\n";
-
+    }
     os << "\r\n";
 
     return os;
