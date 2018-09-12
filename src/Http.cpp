@@ -5,9 +5,11 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/bind.hpp>
+#include <boost/array.hpp>
 
 #include <sstream>
 #include <iostream>
+#include <iterator>
 
 namespace http {
 
@@ -16,7 +18,7 @@ HttpException::HttpException(const std::string& msg)
 {
 }
 
-void Http::get(const Request &request, Response &response)
+void Http::get(const Request &request, Response &response, std::ostream *os)
 {
     Url url = request.url();
 
@@ -34,20 +36,27 @@ void Http::get(const Request &request, Response &response)
         boost::asio::ssl::stream<boost::asio::ip::tcp::socket> socket(io_service, ctx);
 
         if (!_ignoreSsl) {
+        _logger.levelNote();
+            _logger << "SSL verify: verify peer" << std::endl;
             socket.set_verify_mode(boost::asio::ssl::verify_peer);
             socket.set_verify_callback(boost::asio::ssl::rfc2818_verification(url.host()));
+        }
+        else {
+            _logger.levelNote();
+            _logger << "Ignoring SSL errors" << std::endl;
+            socket.set_verify_mode(boost::asio::ssl::verify_none );
         }
 
         connect(socket.lowest_layer(), it);
         socket.handshake(boost::asio::ssl::stream_base::handshake_type::client);
 
-        handleRequest(socket, request, response);
+        handleRequest(socket, request, response, os);
     }
     else if (url.protocol() == "http") {
         boost::asio::ip::tcp::socket socket(io_service);
         boost::asio::connect(socket, it);
 
-        handleRequest(socket, request, response);
+        handleRequest(socket, request, response, os);
     }
     else {
         std::stringstream msg;
@@ -58,7 +67,7 @@ void Http::get(const Request &request, Response &response)
 }
 
 template<typename Socket>
-int Http::handleRequest(Socket &socket, const Request &request, Response &response)
+int Http::handleRequest(Socket &socket, const Request &request, Response &response, std::ostream *os)
 {
     Url url = request.url();
 
@@ -72,11 +81,19 @@ int Http::handleRequest(Socket &socket, const Request &request, Response &respon
     boost::asio::write(socket, requestBuf);
 
     boost::asio::streambuf responseBuf;
-    boost::asio::read_until(socket, responseBuf, "\r\n");
+    boost::asio::read_until(socket, responseBuf, "\r\n\r\n");
 
     std::istream response_stream(&responseBuf);
-
     response_stream >> response;
+
+    if (os != NULL) {
+        boost::system::error_code error;
+        while (boost::asio::read(socket, responseBuf,
+            boost::asio::transfer_at_least(1), error))
+        *os << &responseBuf;
+        if (error != boost::asio::error::eof)
+            throw boost::system::system_error(error);
+    }
 
     _logger.levelNote();
     _logger << "Got status " << response.status() << "(" << response.status_str() << ")" << std::endl;

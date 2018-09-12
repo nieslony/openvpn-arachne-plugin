@@ -74,10 +74,12 @@ public:
     Http(Logger &logger) : _logger(logger) {}
     ~Http() {}
 
-    /*int get(const Url &url,
-            const std::string &user, const std::string &password);
-            */
-    void get(const Request &request, Response &response);
+    void get(const Request &request, Response &response) {
+        get(request, response, NULL);
+    }
+    void get(const Request &request, Response &response, std::ostream& os) {
+        get(request, response, &os);
+    }
 
     void caFile(const std::string &fn) { _caFile = fn; }
     void ignoreSsl(bool is) { _ignoreSsl = is; }
@@ -89,8 +91,10 @@ private:
 
     //std::string base64(const std::string &in) noexcept;
 
+    void get(const Request &request, Response &response, std::ostream *os);
+
     template<typename Socket>
-    int handleRequest(Socket &socket,const Request &request, Response &response);
+    int handleRequest(Socket &socket,const Request &request, Response &response, std::ostream* = NULL);
 
     static void chop(std::string &s);
 
