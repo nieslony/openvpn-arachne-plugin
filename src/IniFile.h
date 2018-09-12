@@ -1,31 +1,61 @@
 #ifndef INI_FILE_H
 #define INI_FILE_H
 
-#include <istream>
-#include <map>
-#include <unordered_set>
 #include <string>
-#include <stdexcept>
+#include <map>
+#include <vector>
+#include <memory>
 
 class IniFileException : public std::runtime_error {
+private:
+    std::string createMsg(const std::string &line, uint lineNr, const std::string &msg);
+
 public:
-    IniFileException(const std::string &msg);
+    IniFileException(const std::string &msg)
+        : std::runtime_error(msg) {}
+    IniFileException(const std::string &line, uint lineNr, const std::string &msg);
+};
+
+class ValueConverter {
+public:
+    virtual void setValue(const std::string&) = 0;
+};
+
+class StringValueConverter : public ValueConverter {
+private:
+    std::string *_value;
+
+public:
+    StringValueConverter(std::string *value) {
+        _value = value;
+    }
+
+    virtual void setValue(const std::string&);
+};
+
+class BoolValueConverter : public ValueConverter {
+private:
+    bool *_value;
+
+public:
+    BoolValueConverter(bool *value) {
+        _value = value;
+    }
+
+    virtual void setValue(const std::string&);
 };
 
 class IniFile {
 private:
-    std::map<std::string, std::string> params;
+    std::map<const std::string, std::unique_ptr<ValueConverter>> _entries;
 
     void chop(std::string &s);
 
 public:
-    IniFile() {}
-    IniFile(std::istream &in, const std::unordered_set<std::string> &keys);
+    void insert(const std::string &key, std::string &value);
+    void insert(const std::string &key, bool &value);
 
-    void load(std::istream &in, const std::unordered_set<std::string> &keys);
-
-    bool get(const std::string &key, bool&);
-    bool get(const std::string &key, std::string&);
+    void load(std::istream &in);
 };
 
 #endif

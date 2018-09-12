@@ -1,93 +1,93 @@
 #include "IniFile.h"
 
+#include <cwctype>
+#include <iterator>
 #include <sstream>
 
-#include <iostream>
-
-using namespace std;
-
-IniFile::IniFile(istream &in, const unordered_set<string> &keys)
+IniFileException::IniFileException(const std::string &line, uint lineNr, const std::string &msg)
+    : runtime_error(createMsg(line, lineNr, msg))
 {
-    load(in, keys);
 }
 
-void IniFile::load(istream &in, const unordered_set<string> &keys) {
-    string line;
+std::string IniFileException::createMsg(const std::string &line, uint lineNr, const std::string &msg)
+{
+    std::stringstream str;
+    str << "Error parsing line " << lineNr << " \"" << line << "\": " << msg;
+
+    return str.str();
+}
+
+void StringValueConverter::setValue(const std::string& value)
+{
+    if (value.front() == '"' && value.back() == '"')
+        *_value = value.substr(1, value.length() -2);
+    else
+        *_value = value;
+}
+
+void BoolValueConverter::setValue(const std::string& value)
+{
+    if (value == "true" || value == "yes" || value == "on" || value == "1")
+        *_value = true;
+    else if (value == "false" || value == "no" || value == "off" || value == "0")
+        *_value = false;
+    else
+        throw IniFileException("Invalid bool value: " + value);
+}
+
+void IniFile::insert(const std::string &key, std::string &var)
+{
+    _entries[key] = std::unique_ptr<ValueConverter>(new StringValueConverter(&var));
+}
+
+void IniFile::insert(const std::string &key, bool &var)
+{
+    _entries[key] = std::unique_ptr<ValueConverter>(new BoolValueConverter(&var));
+}
+
+void IniFile::load(std::istream &in)
+{
+    std::string line;
+    uint lineNr = 1;
 
     while (std::getline(in, line)) {
         chop(line);
-
-        if (line.front() == '#')
-            continue;
-        if (line.empty())
+        if (line.empty() || line.front() == '#')
             continue;
 
         size_t pos = line.find("=");
-
-        if (pos == line.npos) {
-            ostringstream buf;
-            buf << "'='-separated key-value-pair expected: " << line;
-            throw IniFileException(buf.str());
-        }
-
-        string key = line.substr(0, pos);
-        string value = line.substr(pos+1);
+        std::string key = line.substr(0, pos);
+        std::string value = line.substr(pos+1);
 
         chop(key);
         chop(value);
 
-        if (keys.find(key) == keys.end()) {
-            ostringstream buf;
-            buf << "Invalid key: " << key;
-            throw IniFileException(buf.str());
-        }
+        if (_entries.find(key) == _entries.end())
+            throw IniFileException(line, lineNr, "Key " + key + " is invalid");
+        else
+            try {
+                _entries[key]->setValue(value);
+            }
+            catch (const IniFileException &ex) {
+                throw IniFileException(line, lineNr, ex.what());
+            }
 
-        params[key] = value;
+        lineNr++;
     }
 }
 
-void IniFile::chop(string &s)
+void IniFile::chop(std::string &s)
 {
-    size_t pos;
+    size_t from;
+    size_t to;
 
-    while ( (pos = s.find("\r")) != std::string::npos)
-        s.erase(pos, 1);
+    for (from = 0; from < s.length(); from++)
+        if (!iswspace(s[from]))
+            break;
+    for (to = s.length()-1; to >= 0; to--)
+        if (!iswspace(s[to]))
+            break;
 
-    while ( (pos = s.find("\n")) != std::string::npos)
-        s.erase(pos, 1);
+    s = s.substr(from, to-from+1);
 }
 
-bool IniFile::get(const string &key, string &value)
-{
-    auto it = params.find(key);
-    if (it != params.end()) {
-        value = it->second;
-        return true;
-    }
-
-    return false;
-}
-
-bool IniFile::get(const string &key, bool& value)
-{
-    string s_value;
-
-    if (!get(key, s_value)) {
-        return false;
-    }
-
-    if (s_value == "false" || s_value == "no" || s_value == "0") {
-        value = false;
-
-        return true;
-    }
-    if (s_value == "true" || s_value == "yes" || s_value == "1") {
-        value = true;
-
-        return true;
-    }
-
-    ostringstream buf;
-    buf << "Bolean value expected for key " << key << ": " << value;
-    throw IniFileException(buf.str());
-}
