@@ -26,6 +26,7 @@ openvpn_plugin_open_v3 (const int version,
         retptr->type_mask =
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_CONNECT_V2) |
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_DISCONNECT) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_UP) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_DOWN)
         ;
@@ -59,6 +60,8 @@ openvpn_plugin_func_v3(const int version,
             return plugin->pluginDown(args->argv, args->envp, session);
         case OPENVPN_PLUGIN_CLIENT_CONNECT_V2:
             return plugin->clientConnect(args->argv, args->envp, session);
+        case OPENVPN_PLUGIN_CLIENT_DISCONNECT:
+            return plugin->clientDisconnect(args->argv, args->envp, session);
         default:
             return OPENVPN_PLUGIN_FUNC_ERROR;
     }

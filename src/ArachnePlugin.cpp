@@ -18,6 +18,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/foreach.hpp>
+#include <boost/algorithm/string.hpp>
 
 #define URL_AUTH     "/auth"
 #define URL_FIREWALL "/firewall"
@@ -82,6 +83,7 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
     }
     else if (whatType == "PortListProtocol") {
         std::string protocol = node.second.get<std::string>("whatProtocol");
+        boost::algorithm::to_lower(protocol);
         BOOST_FOREACH(boost::property_tree::ptree::value_type &port, node.second.get_child("whatPorts")) {
             std::stringstream str;
             str << "port port=\""  << port.second.get_value<std::string>() << "\" "
@@ -91,6 +93,7 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
     }
     else if (whatType == "PortProtocol") {
         std::string protocol = node.second.get<std::string>("whatProtocol");
+        boost::algorithm::to_lower(protocol);
         std::string port = node.second.get<std::string>("whatPort");
 
         std::stringstream str;
@@ -99,6 +102,7 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
     }
     else if (whatType == "PortRangeProtocol") {
         std::string protocol = node.second.get<std::string>("whatProtocol");
+        boost::algorithm::to_lower(protocol);
         std::string portFrom = node.second.get<std::string>("whatPortFrom");
         std::string portTo = node.second.get<std::string>("whatPortTo");
 
@@ -201,7 +205,7 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
             for (std::vector<std::string>::iterator what = whats.begin(); what != whats.end(); ++what) {
                 std::stringstream str;
                 str
-                    << "rule "
+                    << "rule family=\"ipv4\" "
                     << "source address=\"" << clientIp << "\" "
                     << "destination address=\"" << *where << "\" "
                     << *what << " "
@@ -212,8 +216,39 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
         }
     }
 
+    session->logger().levelNote();
+    session->logger() << "Adding " << session->richRules().size()
+        << " rich rules to zone " << _firewallZone << std::endl;
     for (auto &it : session->richRules()) {
-        std::cout << it << std::endl;
+        try {
+            _firewall.addRichRule(_firewallZone, it);
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot add rich rule " << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+    }
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::clientDisconnect(const char *argv[], const char *envp[], ClientSession*session) noexcept
+{
+    if (_manageFirewall) {
+        try {
+            session->logger().levelNote();
+            session->logger() << "Removing " << session->richRules().size()
+                << " rich rules from zone " << _firewallZone << std::endl;
+            for (auto &it : session->richRules()) {
+                _firewall.removeRichRule(_firewallZone, it);
+            }
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot remove rule " << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
     }
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
@@ -269,14 +304,13 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
     _logger->levelNote();
     session->logger() << "Opening device " << getenv("dev", envp) << "..." << std::endl;
 
-    Firewall firewall;
-    firewall.init();
+    _firewall.init();
 
     if (_manageFirewall) {
         try {
             _logger->levelNote();
             session->logger() << "Creating firewall zone " << _firewallZone << std::endl;
-            firewall.createZone(_firewallZone, "tun0");
+            _firewall.createZone(_firewallZone, "tun0");
         }
         catch (DBus::Error &ex) {
             if (ex.name() == Firewall::FIREWALLD1_EXCEPTION) {

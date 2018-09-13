@@ -18,6 +18,7 @@
 
 #include "Url.h"
 #include "Http.h"
+#include "Firewall.h"
 
 class Logger;
 class ClientSession;
@@ -33,6 +34,7 @@ private:
     time_t _startupTime = -1;
     long _sessionCounter = 0;
     Logger *_logger = NULL;
+    Firewall _firewall;
 
     Url _authUrl;
     std::string _caFile;
@@ -70,6 +72,7 @@ public:
     int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
     ClientSession *createClientSession();
 

@@ -2,7 +2,7 @@
 #include "FirewallD1.h"
 #include "FirewallD1_Config.h"
 //#include "FirewallD1_Config_Zone.h"
-//#include "FirewallD1_Zone.h"
+#include "FirewallD1_Zone.h"
 
 #include <dbus-c++-1/dbus-c++/dbus.h>
 #include <dbus-c++-1/dbus-c++/dispatcher.h>
@@ -132,6 +132,16 @@ void debugZoneSettings(ZoneSettings &zoneSettings)
     std::cerr << pos++ << ": " << zoneSettings._16 << std::endl;
 }
 
+void Firewall::addRichRule(const std::string &zoneName, const std::string &richRule)
+{
+    fwZone->addRichRule(zoneName, richRule, 0);
+}
+
+void Firewall::removeRichRule(const std::string &zoneName, const std::string &richRule)
+{
+    fwZone->removeRichRule(zoneName, richRule);
+}
+
 void Firewall::createZone(const std::string &zoneName, const std::string &interface)
 {
     ZoneSettings zoneSettings;
@@ -168,6 +178,11 @@ void Firewall::init()
 
     fwConfig = new FirewallD1_Config(conn,
                           "/org/fedoraproject/FirewallD1/config",
+                          "org.fedoraproject.FirewallD1"
+                           );
+
+    fwZone = new FirewallD1_Zone(conn,
+                          "/org/fedoraproject/FirewallD1",
                           "org.fedoraproject.FirewallD1"
                            );
     // firewalld1.authorizeAll();
