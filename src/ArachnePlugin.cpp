@@ -207,9 +207,13 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
                     << *what << " "
                     << "accept";
 
-                std::cout << str.str() << std::endl;
+                session->richRules().insert(str.str());
             }
         }
+    }
+
+    for (auto &it : session->richRules()) {
+        std::cout << it << std::endl;
     }
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
@@ -275,7 +279,6 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
             firewall.createZone(_firewallZone, "tun0");
         }
         catch (DBus::Error &ex) {
-            //std::cerr << ex.what() << std::endl;
             if (ex.name() == Firewall::FIREWALLD1_EXCEPTION) {
                 std::string type;
                 std::string param;
@@ -288,13 +291,13 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
                 else {
                     _logger->levelErr();
                     session->logger() << "Unhandled DBus::Error " << type << std::endl;
-                    throw ex;
+                    return OPENVPN_PLUGIN_FUNC_ERROR;;
                 }
             }
             else {
                 _logger->levelErr();
                 session->logger() << "Unknown exception" << std::endl;
-                throw ex;
+                return OPENVPN_PLUGIN_FUNC_ERROR;;
             }
         }
     }

@@ -4,6 +4,7 @@
 #include <boost/property_tree/json_parser.hpp>
 
 #include <string>
+#include <set>
 
 #include "ArachnePlugin.h"
 #include "Logger.h"
@@ -17,6 +18,7 @@ private:
     const ArachnePlugin &_plugin;
     std::string _username;
     std::string _password;
+    std::set<std::string> _richRules;
 
     ClientSession(const ArachnePlugin&, long id);
 
@@ -31,6 +33,7 @@ public:
     bool authUser(const Url &authUrl, const std::string &username, const std::string &password);
 
     void getFirewallConfig(const Url &url, boost::property_tree::ptree &json);
+    std::set<std::string> &richRules() { return _richRules; }
 };
 
 #endif

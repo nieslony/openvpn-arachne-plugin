@@ -1,8 +1,8 @@
 #include "Firewall.h"
 #include "FirewallD1.h"
 #include "FirewallD1_Config.h"
-#include "FirewallD1_Config_Zone.h"
-#include "FirewallD1_Zone.h"
+//#include "FirewallD1_Config_Zone.h"
+//#include "FirewallD1_Zone.h"
 
 #include <dbus-c++-1/dbus-c++/dbus.h>
 #include <dbus-c++-1/dbus-c++/dispatcher.h>
