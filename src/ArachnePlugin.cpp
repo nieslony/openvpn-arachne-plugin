@@ -312,27 +312,9 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
             session->logger() << "Creating firewall zone " << _firewallZone << std::endl;
             _firewall.createZone(_firewallZone, "tun0");
         }
-        catch (DBus::Error &ex) {
-            if (ex.name() == Firewall::FIREWALLD1_EXCEPTION) {
-                std::string type;
-                std::string param;
-                Firewall::exceptionType(ex, type, param);
-
-                if (type == Firewall::FIREWALLD1_EX_NAME_CONFLICT) {
-                    _logger->levelNote();
-                    session->logger() << "Firewall zone " << _firewallZone << " already exists, reusing it";
-                }
-                else {
-                    _logger->levelErr();
-                    session->logger() << "Unhandled DBus::Error " << type << std::endl;
-                    return OPENVPN_PLUGIN_FUNC_ERROR;;
-                }
-            }
-            else {
-                _logger->levelErr();
-                session->logger() << "Unknown exception" << std::endl;
-                return OPENVPN_PLUGIN_FUNC_ERROR;;
-            }
+        catch (FirewallException &ex) {
+            session->logger().levelErr();
+            session->logger() << ex.what() << std::endl;
         }
     }
     else {
