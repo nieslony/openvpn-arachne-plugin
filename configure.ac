@@ -29,6 +29,7 @@ AC_CONFIG_FILES([
     Makefile
     openvpn-arachne-plugin.spec
     src/Makefile
+    debian/Makefile
     debian/debian.control
     debian/debian.rules
     debian/debian.changelog

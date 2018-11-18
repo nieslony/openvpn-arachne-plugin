@@ -1,4 +1,4 @@
-SUBDIRS = src
+SUBDIRS = src debian
 
 EXTRA_DIST = LICENSE
 
