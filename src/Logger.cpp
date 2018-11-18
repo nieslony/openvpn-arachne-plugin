@@ -9,7 +9,6 @@ LoggerBuf::LoggerBuf(const ArachnePlugin *plugin, const ClientSession *session)
 {
     _plugin = plugin;
     _session = session;
-    _line = std::stringstream();
     _level = PLOG_NOTE;
 }
 
@@ -51,7 +50,7 @@ int LoggerBuf::sync()
 
     do_sync(_plugin, _session, _level, prefix.c_str(), msg.c_str());
 
-    _line = std::stringstream();
+    _line.str("");
 
     return 0;
 }

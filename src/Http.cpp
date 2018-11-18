@@ -27,7 +27,7 @@ void Http::get(const Request &request, Response &response, std::ostream *os)
     boost::asio::io_service io_service;
 
     boost::asio::ip::tcp::resolver resolver(io_service);
-    auto it = resolver.resolve(url.host(), std::to_string(url.port()));
+    auto it = resolver.resolve({url.host(), std::to_string(url.port())});
     if (url.protocol() == "https") {
         boost::asio::ssl::context ctx(boost::asio::ssl::context::method::sslv23_client);
         if (_caFile.length() > 0)
