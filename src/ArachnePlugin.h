@@ -38,8 +38,8 @@ private:
 
     Url _authUrl;
     std::string _caFile;
-    bool _ignoreSsl;
-    bool _handleIpForwarding;
+    bool _ignoreSsl = false;
+    bool _handleIpForwarding =  false;
     std::string _oldIpForwarding;
     bool _manageFirewall = false;
     std::string _firewallZone = "arachne-uservpn";

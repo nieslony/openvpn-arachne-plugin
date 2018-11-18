@@ -26,7 +26,6 @@
 static const std::string FN_IP_FORWARD("/proc/sys/net/ipv4/ip_forward");
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
-    : _ignoreSsl(false), _handleIpForwarding(false)
 {
     _log_func = in_args->callbacks->plugin_vlog;
     time(&_startupTime);
@@ -198,7 +197,7 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
         int ret;
         if (ret = getFirewallWheres(v, wheres, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
             return ret;
-        if (ret = ret = getFirewallWhats(v, whats, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
+        if (ret = getFirewallWhats(v, whats, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
             return ret;
 
         for (std::vector<std::string>::iterator where = wheres.begin(); where != wheres.end(); ++where) {
@@ -304,17 +303,22 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[],
     _logger->levelNote();
     session->logger() << "Opening device " << getenv("dev", envp) << "..." << std::endl;
 
-    _firewall.init();
-
     if (_manageFirewall) {
         try {
             _logger->levelNote();
             session->logger() << "Creating firewall zone " << _firewallZone << std::endl;
-            _firewall.createZone(_firewallZone, "tun0");
+            _firewall.addZone(_firewallZone, "tun0");
+            _firewall.reload();
         }
-        catch (FirewallException &ex) {
-            session->logger().levelErr();
-            session->logger() << ex.what() << std::endl;
+        catch (FirewallRuntimeException &ex) {
+            if (ex.type() != FirewallRuntimeException::NAME_CONFLICT) {
+                _logger->levelErr();
+                session->logger() << "Error creating firewall zone(" << ex.type()
+                    << "): " << ex.what() << std::endl;
+                return OPENVPN_PLUGIN_FUNC_ERROR;
+            }
+            _logger->levelNote();
+            session->logger() << "Zone " << _firewallZone << " already exists" << std::endl;
         }
     }
     else {
