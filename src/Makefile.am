@@ -12,9 +12,7 @@ arachne_la_SOURCES = \
 	main.cpp
 
 EXTRA_DIST= \
-	ArachnePlugin.h Url.h ClientSession.h IniFile.h \
-	ArachnePlugin.h Url.h ClientSession.h FirewallD1.h \
-	Http.h Logger.h
+	ArachnePlugin.h  ClientSession.h  Firewall.h  Http.h  IniFile.h  Logger.h  Url.h
 
 clean-local:
 	rm -fv $(BUILT_SOURCES) $(BUILT_SOURCES:_proxy.h=.xml)
