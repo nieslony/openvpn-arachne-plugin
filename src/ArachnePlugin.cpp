@@ -166,6 +166,9 @@ int ArachnePlugin::getFirewallWheres(boost::property_tree::ptree::value_type &no
             return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     }
+    else if (whereType == "Everywhere") {
+        wheres.push_back("0.0.0.0/0");
+    }
     else {
         session->logger().levelErr();
         session->logger() << "Invalid whereType: " << whereType << std::endl;
