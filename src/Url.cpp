@@ -2,7 +2,7 @@
 #include "ArachnePlugin.h"
 
 #include <sstream>
-#include <regex>
+#include <boost/regex.hpp>
 
 Url::Url(const std::string& url)
 {
@@ -11,14 +11,14 @@ Url::Url(const std::string& url)
 
 void Url::init(const std::string& url)
 {
-    std::smatch m;
+    boost::smatch m;
 
     std::string proto;
     std::string host;
     std::string port;
     std::string path;
 
-    bool found = regex_search(url, m, std::regex("^(http[s]?)://([a-zA-Z0-9.\\-]*)(:([0-9]+))?(/(.*))?$"));
+    bool found = boost::regex_search(url, m, boost::regex("^(http[s]?)://([a-zA-Z0-9.\\-]*)(:([0-9]+))?(/(.*))?$"));
 
     if (!found) {
         std::ostringstream buf;
