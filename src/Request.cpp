@@ -32,8 +32,8 @@ std::string base64(const std::string &in)
     return os.str();
 }
 
-Request::Request(const Url &url)
-    : _url(url)
+Request::Request(HttpMethod method, const Url &url)
+    : _method(method), _url(url)
 {
 }
 
@@ -50,12 +50,22 @@ void Request::basicAuth(const std::string &username, const std::string &password
     _headers["Authorization"] = "Basic " + userPwdBase64;
 }
 
+std::string Request::methodStr() const
+{
+    switch (_method) {
+        case GET:
+            return "GET";
+    }
+
+    return "invalid";
+}
+
 std::ostream &operator<<(std::ostream& os, const Request& r)
 {
-    os << "GET " << r.url().path() << " HTTP/1.1\r\n";
+    os << r.methodStr() << " "  << r.url().path() << " HTTP/1.0" << "\r\n";
     os << "Host: " << r.url().host() << "\r\n";
-    os << "Accept: */*\r\n";
-    os << "Connection: close\r\n";
+    os << "Accept: */*" << "\r\n";
+    os << "Connection: close" << "\r\n";
 
     for (auto it = r._headers.begin(); it != r._headers.end(); ++it) {
         os << (*it).first << ": " << (*it).second << "\r\n";

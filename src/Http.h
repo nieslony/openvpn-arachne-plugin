@@ -16,16 +16,22 @@ typedef
     std::map<std::string, std::string>
     header_map;
 
+enum HttpMethod {
+    GET
+};
+
 class Request {
 friend std::ostream &operator<<(std::ostream& os, const Request &r);
 
 private:
     Url _url;
     header_map _headers;
+    HttpMethod _method;
+
     Request() {}
 
 public:
-    Request(const Url &url);
+    Request(HttpMethod method, const Url &url);
 
     const Url &url() const { return _url; }
 
@@ -35,6 +41,8 @@ public:
     }
 
     void basicAuth(const std::string &username, const std::string &password);
+
+    std::string methodStr() const;
 };
 
 std::ostream &operator<<(std::ostream&, const Request&);
@@ -74,12 +82,7 @@ public:
     Http(Logger &logger) : _logger(logger) {}
     ~Http() {}
 
-    void get(const Request &request, Response &response) {
-        get(request, response, NULL);
-    }
-    void get(const Request &request, Response &response, std::ostream& os) {
-        get(request, response, &os);
-    }
+    void doHttp(const Request &request, Response &response, std::ostream *os = NULL);
 
     void caFile(const std::string &fn) { _caFile = fn; }
     void ignoreSsl(bool is) { _ignoreSsl = is; }
@@ -89,15 +92,7 @@ private:
     std::string _caFile;
     bool _ignoreSsl = false;
 
-    //std::string base64(const std::string &in) noexcept;
-
-    void get(const Request &request, Response &response, std::ostream *os);
-
-    template<typename Socket>
-    int handleRequest(Socket &socket,const Request &request, Response &response, std::ostream* = NULL);
-
-    static void chop(std::string &s);
-
+    void doHttpInt(const Request &request, Response &response, std::iostream &https, std::ostream *os = NULL);
 };
 
 }

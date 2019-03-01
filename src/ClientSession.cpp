@@ -33,11 +33,11 @@ long ClientSession::id() const
 bool ClientSession::authUser(const Url &authUrl, const std::string &username, const std::string &password)
 {
     try {
-        http::Request request(authUrl);
+        http::Request request(http::HttpMethod::GET, authUrl);
         request.basicAuth(username, password);
 
         http::Response response;
-        _http.get(request, response);
+        _http.doHttp(request, response);
 
         _username = username;
         _password = password;
@@ -57,12 +57,17 @@ void ClientSession::getFirewallConfig(const Url &url, boost::property_tree::ptre
     _logger.levelNote();
     _logger << "Getting firewall configuration" << std::endl;
 
-    http::Request request(url);
+    http::Request request(http::HttpMethod::GET, url);
     request.basicAuth(_username, _password);
 
     http::Response response;
     std::stringstream content;
-    _http.get(request, response, content);
+    _http.doHttp(request, response, &content);
 
-    boost::property_tree::read_json(content, json);
+    if (response.status() == 200) {
+        _logger << content.str() << std::endl;
+        boost::property_tree::read_json(content, json);
+    }
+    else
+        _logger << response.status_str();
 }
