@@ -79,6 +79,7 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
         whats.push_back(str.str());
     }
     else if (whatType == "Everything") {
+        whats.push_back("");
     }
     else if (whatType == "PortListProtocol") {
         std::string protocol = node.second.get<std::string>("whatProtocol");
@@ -223,11 +224,22 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
         << " rich rules to zone " << _firewallZone << std::endl;
     for (auto &it : session->richRules()) {
         try {
+            session->logger().levelNote();
+            session->logger() << "Rich rule >>" << it << "<<" << std::endl;
             _firewall.addRichRule(_firewallZone, it);
         }
         catch (const std::exception &ex) {
             session->logger().levelErr();
             session->logger() << "Cannot add rich rule " << ex.what() << std::endl;
+
+            try {
+                for (auto &it : session->richRules()) {
+                    _firewall.removeRichRule(_firewallZone, it);
+                }
+            }
+            catch (const std::exception &ex) {
+            }
+
             return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     }
