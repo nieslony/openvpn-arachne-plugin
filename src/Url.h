@@ -24,12 +24,12 @@ public:
     const std::string &protocol() const { return _protocol; };
     const std::string &host() const { return _host; };
     const std::string &path() const { return _path; };
-    void path(const std::string &path) { _path = path; }
+    bool autoPort() const { return _autoPort; }
     unsigned port() const { return _port; };
 
+    void path(const std::string &path) { _path = path; }
     void port(unsigned p) { _port = p; }
 
-    bool autoPort() { return _autoPort; }
 };
 
 #endif

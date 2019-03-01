@@ -2,6 +2,7 @@
 #include "ArachnePlugin.h"
 
 #include <sstream>
+#include <regex>
 
 Url::Url(const std::string& url)
 {
@@ -10,39 +11,41 @@ Url::Url(const std::string& url)
 
 void Url::init(const std::string& url)
 {
-    try {
-        size_t begin_host = url.find("://") + 3;
-        _protocol = url.substr(0, begin_host-3);
+    std::smatch m;
 
-        size_t begin_path = url.find("/", begin_host);
-        _host = url.substr(begin_host, begin_path-begin_host);
+    std::string proto;
+    std::string host;
+    std::string port;
+    std::string path;
 
-        size_t begin_port = _host.find(":");
+    bool found = regex_search(url, m, std::regex("^(http[s]?)://([a-zA-Z0-9.\\-]*)(:([0-9]+))?(/(.*))?$"));
 
-        if (_protocol == "http") {
-            _port = 80;
-            _autoPort = true;
-        }
-        else if(_protocol == "https") {
-            _port = 443;
-            _autoPort = true;
-        }
-        else {
-            _port = 65535;
-            _autoPort = true;
-        }
-
-        if (begin_port != std::string::npos) {
-            std::string port_str = _host.substr(begin_port+1);
-            _port = std::stoi(port_str);
-            _host = _host.substr(0, begin_port);
-        }
-
-        _path = url.substr(begin_path);
-    }
-    catch (std::exception &ex) {
+    if (!found) {
         std::ostringstream buf;
         buf << "Error parsing url: " << url;
+        throw PluginException(buf.str());
+    }
+
+    _protocol = m[1].str();
+    _host = m[2].str();
+    port = m[4].str();
+    _path = m[5].str();
+
+    if (port == "") {
+        if (_protocol == "http")
+            _port = 80;
+        else
+            _port = 443;
+        _autoPort = true;
+    }
+    else {
+        _port = std::stoi(port);
+        _autoPort = false;
+    }
+
+    if (_port < 1 || _port > 65534) {
+        std::ostringstream buf;
+        buf << "Error parsing url " << url << ": invalid port number: " << port;
         throw PluginException(buf.str());
     }
 }
