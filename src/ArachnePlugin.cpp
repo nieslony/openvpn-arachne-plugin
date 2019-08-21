@@ -74,9 +74,13 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
     std::string whatType = node.second.get<std::string>("whatType");
 
     if (whatType == "Service") {
-        std::stringstream str;
-        str << "service name=\"" << node.second.get<std::string>("whatService") << "\"";
-        whats.push_back(str.str());
+    	BOOST_FOREACH(boost::property_tree::ptree::value_type &pp, node.second.get_child("whatService")) {
+    		auto port = pp.second.get<std::string>("port");
+    		auto protocol = pp.second.get<std::string>("protocol");
+    		std::stringstream str;
+    		str << "port port=\"" << port << "\" protocol=\"" << protocol << "\"";
+    		whats.push_back(str.str());
+    	}
     }
     else if (whatType == "Everything") {
         whats.push_back("");
