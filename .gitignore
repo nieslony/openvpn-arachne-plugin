@@ -47,3 +47,4 @@ ltmain.sh
 m4/
 missing
 src/Makefile.in
+build/
