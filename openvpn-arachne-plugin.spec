@@ -31,6 +31,7 @@ openVPN plugin needed by arachne
 %setup -q
 
 %build
+./gen-auto.sh
 CXXFLAGS=%{cxxflags} ./configure --libdir=%{_libdir}
 %{__make}
 
