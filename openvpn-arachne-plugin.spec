@@ -1,5 +1,5 @@
-Name:       @PACKAGE_NAME@
-Version:    @PACKAGE_VERSION@
+Name:       openvpn-arachne-plugin
+Version:    0.1.1a_git
 Release:    1
 Summary:    An openVPN plugin needed by arachne
 
