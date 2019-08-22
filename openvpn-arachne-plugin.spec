@@ -8,7 +8,7 @@ URL:        http://www.nieslony.site/arachne
 Source0:    %{name}-%{version}.tar.gz
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires:  openvpn-devel, boost-devel, gcc-c++, openssl-devel, dbus-c++-devel
+BuildRequires:  openvpn-devel, boost-devel, gcc-c++, openssl-devel, dbus-c++-devel, obs-service-set_version
 Requires:	boost
 
 %if 0%{?centos_version}
