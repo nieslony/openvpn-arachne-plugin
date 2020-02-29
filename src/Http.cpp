@@ -55,6 +55,9 @@ void Http::doHttpInt(const Request &request, Response &response, std::iostream &
     https << request << std::flush;
     https >> response;
 
+    _logger.levelNote();
+    _logger << "HTTP status: " << response.status() << " " << response.status_str() << std::endl;
+
     if (os != NULL)
         *os << https.rdbuf();
 }
@@ -72,7 +75,7 @@ void Http::doHttp(const Request &request, Response &response, std::ostream *os)
         _logger.levelNote();
         _logger << "HTTP" << std::endl;
         tcp::iostream tcps(request.url().host(), portStr);
-        tcps.expires_from_now(boost::posix_time::seconds(60));
+        //tcps.expires_from_now(boost::posix_time::seconds(60));
 
         doHttpInt(request, response, tcps, os);
     } else {
