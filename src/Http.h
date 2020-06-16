@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <stdexcept>
 
 #include "Url.h"
 
