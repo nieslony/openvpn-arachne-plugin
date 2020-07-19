@@ -55,6 +55,9 @@ void Http::doHttpInt(const Request &request, Response &response, std::iostream &
     https << request << std::flush;
     https >> response;
 
+    _logger.levelNote();
+    _logger << "HTTP status: " << response.status() << " " << response.status_str() << std::endl;
+
     if (os != NULL)
         *os << https.rdbuf();
 }
