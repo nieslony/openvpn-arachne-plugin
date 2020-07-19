@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include <memory>
+#include <stdexcept>
 
 class IniFileException : public std::runtime_error {
 private:
