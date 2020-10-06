@@ -20,8 +20,8 @@
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
 
-#define URL_AUTH     "/auth"
-#define URL_FIREWALL "/firewall"
+static const char URL_AUTH[] = "/auth";
+static const char URL_FIREWALL[] ="/firewall";
 
 static const std::string FN_IP_FORWARD("/proc/sys/net/ipv4/ip_forward");
 
@@ -74,13 +74,20 @@ int ArachnePlugin::getFirewallWhats(boost::property_tree::ptree::value_type &nod
     std::string whatType = node.second.get<std::string>("whatType");
 
     if (whatType == "Service") {
-    	BOOST_FOREACH(boost::property_tree::ptree::value_type &pp, node.second.get_child("whatService")) {
-    		auto port = pp.second.get<std::string>("port");
-    		auto protocol = pp.second.get<std::string>("protocol");
-    		std::stringstream str;
-    		str << "port port=\"" << port << "\" protocol=\"" << protocol << "\"";
-    		whats.push_back(str.str());
-    	}
+        std::string service;
+        try {
+            service = node.second.get<std::string>("whatService");
+        }
+        catch (const std::exception &ex) {
+            session->logger().levelErr();
+            session->logger() << "Cannot find whatService JSON reply: "
+                << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+        std::stringstream str;
+        str << "service name=\"" << service << "\"";
+        session->logger().levelErr() << "what: " << str.str() << std::endl;
+        whats.push_back(str.str());
     }
     else if (whatType == "Everything") {
         whats.push_back("");
@@ -208,14 +215,17 @@ int ArachnePlugin::setupFirewall(const std::string &clientIp, ClientSession *ses
         if (ret = getFirewallWhats(v, whats, session) != OPENVPN_PLUGIN_FUNC_SUCCESS)
             return ret;
 
-        for (std::vector<std::string>::iterator where = wheres.begin(); where != wheres.end(); ++where) {
-            for (std::vector<std::string>::iterator what = whats.begin(); what != whats.end(); ++what) {
+        for (std::vector<std::string>::iterator where_it = wheres.begin();
+             where_it != wheres.end();
+             ++where_it)
+        {
+            for (std::vector<std::string>::iterator what_it = whats.begin(); what_it != whats.end(); ++what_it) {
                 std::stringstream str;
                 str
                     << "rule family=\"ipv4\" "
                     << "source address=\"" << clientIp << "\" "
-                    << "destination address=\"" << *where << "\" "
-                    << *what << " "
+                    << "destination address=\"" << *where_it << "\" "
+                    << *what_it << " "
                     << "accept";
 
                 session->richRules().insert(str.str());
