@@ -50,10 +50,10 @@ public:
         : std::ostream(&_loggerBuf), std::ios(0), _loggerBuf(plugin, session)
     {}
 
-    void levelNote() { _loggerBuf.level(PLOG_NOTE); }
-    void levelWarn() { _loggerBuf.level(PLOG_WARN); }
-    void levelErr() { _loggerBuf.level(PLOG_ERR); }
-    void levelDebug() { _loggerBuf.level(PLOG_DEBUG); }
+    std::ostream& levelNote() { _loggerBuf.level(PLOG_NOTE); return *this; }
+    std::ostream& levelWarn() { _loggerBuf.level(PLOG_WARN); return *this; }
+    std::ostream& levelErr() { _loggerBuf.level(PLOG_ERR); return *this; }
+    std::ostream& levelDebug() { _loggerBuf.level(PLOG_DEBUG); return *this; }
 
 private:
     LoggerBuf _loggerBuf;
