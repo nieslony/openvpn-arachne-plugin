@@ -50,7 +50,7 @@ void Http::doHttpInt(const Request &request, Response &response, std::iostream &
 {
     _logger.levelNote();
     _logger << request.methodStr() << " " << request.url().str() << std::endl;
-    _logger << request << std::endl;
+    _logger << request.secureCopy() << std::endl;
 
     https << request << std::flush;
     https >> response;

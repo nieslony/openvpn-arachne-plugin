@@ -37,6 +37,17 @@ Request::Request(HttpMethod method, const Url &url)
 {
 }
 
+const Request Request::secureCopy() const
+{
+    Request copy = *this;
+    header_map::iterator it = copy._headers.find("Authorization");
+    if (it != copy._headers.end()) {
+        copy._headers["Authorization"] = "__secure__";
+    }
+
+    return copy;
+}
+
 void Request::header(const std::string &key, const std::string &value)
 {
     _headers[key] = value;

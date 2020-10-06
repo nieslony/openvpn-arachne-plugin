@@ -33,6 +33,7 @@ private:
 
 public:
     Request(HttpMethod method, const Url &url);
+    const Request secureCopy() const;
 
     const Url &url() const { return _url; }
 
