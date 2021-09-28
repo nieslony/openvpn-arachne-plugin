@@ -4,4 +4,4 @@ EXTRA_DIST = LICENSE
 
 NODIST = openvpn-arachne-plugin.spec.in
 
-am__tar += --owner roor --group root
+am__tar += --owner root --group root
