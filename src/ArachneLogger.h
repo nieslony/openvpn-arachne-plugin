@@ -25,10 +25,10 @@ protected:
     virtual int sync();
 
 private:
-    openvpn_plugin_log_flags_t _level;
     plugin_vlog_t _logFunc;
-    std::stringstream _line;
     int _sessionId;
+    openvpn_plugin_log_flags_t _level;
+    std::stringstream _line;
 
     void log(const char* msg, ...);
 };

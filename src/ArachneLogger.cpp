@@ -3,7 +3,7 @@
 #include <sstream>
 
 ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId)
-    : _logFunc(log_func), _sessionId(sessionId)
+    : _logFunc(log_func), _sessionId(sessionId), _level(PLOG_NOTE)
 {
 }
 
