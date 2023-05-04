@@ -19,7 +19,6 @@ openVPN plugin needed by arachne
 
 %build
 %configure
-ls -l
 %{__make} %{?_smp_mflags}
 
 %install
