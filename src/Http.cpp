@@ -1,5 +1,7 @@
 #include "Http.h"
 
+#define BOOST_BIND_NO_PLACEHOLDERS
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/bind.hpp>
@@ -8,6 +10,25 @@
 #include <iostream>
 
 namespace http {
+
+typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket;
+
+class SslWrapper : public boost::iostreams::device<boost::iostreams::bidirectional>
+{
+    ssl_socket& sock;
+public:
+    typedef char char_type;
+
+    SslWrapper(ssl_socket& sock) : sock(sock) {}
+
+    std::streamsize read(char_type* s, std::streamsize n) {
+        auto rc = boost::asio::read(sock, boost::asio::buffer(s,n));
+        return rc;
+    }
+    std::streamsize write(const char_type* s, std::streamsize n) {
+        return boost::asio::write(sock, boost::asio::buffer(s,n));
+    }
+};
 
 void Http::doHttpInt(const Request &request, Response &response, std::iostream &https, std::ostream *os)
 {
@@ -54,5 +75,4 @@ void Http::doHttp(const Request &request, Response &response, std::ostream *os)
     }
 }
 
-
-}
+} // namespace http

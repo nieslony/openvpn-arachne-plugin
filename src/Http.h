@@ -24,9 +24,9 @@ class Request {
 friend std::ostream &operator<<(std::ostream& os, const Request &r);
 
 private:
+    HttpMethod _method;
     Url _url;
     header_map _headers;
-    HttpMethod _method;
 
     Request() {}
 
