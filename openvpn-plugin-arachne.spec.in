@@ -1,0 +1,35 @@
+Name:       @PACKAGE_NAME@
+Version:    @PACKAGE_VERSION@
+Release:    1
+Summary:    An openVPN plugin for arachne
+
+License:    GPL-2.0+
+URL:        http://www.nieslony.site/arachne
+Source0:    %{name}-%{version}.tar.gz
+
+BuildRequires:  openvpn-devel, boost-devel, gcc-c++, openssl-devel
+Requires:       boost
+
+%description
+openVPN plugin needed by arachne
+ - authentication via HTTP(S) url
+
+%prep
+%setup -q
+
+%build
+%configure
+ls -l
+%{__make} %{?_smp_mflags}
+
+%install
+mkdir -p %{buildroot}/%{_libdir}/openvpn/plugins
+%make_install
+
+%files
+%license LICENSE
+%{_libdir}/openvpn/plugins
+
+%changelog
+* Sun Nov 19 2017 Claas Nieslony <claas@nieslony.at> 0.1.0
+- Initial version
