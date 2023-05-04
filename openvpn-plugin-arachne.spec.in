@@ -22,7 +22,6 @@ openVPN plugin needed by arachne
 %{__make} %{?_smp_mflags}
 
 %install
-mkdir -p %{buildroot}/%{_libdir}/openvpn/plugins
 %make_install
 
 %files
