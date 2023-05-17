@@ -21,6 +21,7 @@ public:
 
     void load(std::istream&);
     const std::string &get(const std::string&);
+    bool getBool(const std::string&);
 
 private:
     std::map<std::string, std::string> _entries;
