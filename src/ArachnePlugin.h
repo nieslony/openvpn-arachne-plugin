@@ -39,10 +39,16 @@ private:
     plugin_vlog_t _logFunc;
     int _lastSession;
     Url _authUrl;
+    std::string _savedIpForward;
+    bool _enableFirewall;
+    std::string _firewallZone;
 
     const char* getEnv(const char* key, const char *envp[]);
     void readConfigFile(const char*);
     Config _config;
+
+    std::string getRoutingStatus();
+    void setRoutingStatus(const std::string&);
 };
 
 #endif

@@ -3,7 +3,8 @@
 
 #include <fstream>
 
-#define URL_AUTH     "/auth"
+static const std::string URL_AUTH = "/auth";
+static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
     : _logger(in_args->callbacks->plugin_vlog), _lastSession(0)
@@ -17,11 +18,43 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
 
     readConfigFile(configFile);
     _authUrl = _config.get("auth-url");
+    std::string enableRouting = _config.get("enable-routing");
+    if (enableRouting == "RESTORE_ON_EXIT") {
+        _savedIpForward = getRoutingStatus();
+        if (enableRouting == "1") {
+            _logger.note() << "Enabling IP forwarding" << std::flush;
+            setRoutingStatus("1");
+        } else {
+            _logger.note() << "IP forwarding already enabled" << std::flush;
+        }
+    } else if (enableRouting == "ENABLE") {
+        _logger.note() << "Enabling IP forwarding" << std::flush;
+        setRoutingStatus("1");
+    } else if (enableRouting == "OFF") {
+        _logger.note() << "Don't enable IP forwarding" << std::flush;
+    } else {
+        throw PluginException("Invalid value of enable-routing: " + enableRouting);
+    }
+
+    _enableFirewall = _config.getBool("enable-firewall");
+    if (_enableFirewall) {
+        _firewallZone = _config.get("firewall-zone");
+        if (_firewallZone == "") {
+            _firewallZone = "arachne";
+            _logger.warning() << "firewall-zone not given, fall back to arachne" << std::flush;
+        } else {
+            _logger.note() << "Enabling firewall zone \"" + _firewallZone << "\"" << std::flush;
+        }
+    }
 }
 
 ArachnePlugin::~ArachnePlugin()
 {
     _logger.note() << "Clean up" << std::flush;
+    if (_savedIpForward != "1" && _savedIpForward != "") {
+        _logger.note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
+        setRoutingStatus(_savedIpForward);
+    }
 }
 
 ClientSession *ArachnePlugin::createClientSession()
@@ -69,4 +102,28 @@ void ArachnePlugin::readConfigFile(const char*filename)
     }
     _config.load(ifs);
     ifs.close();
+}
+
+std::string ArachnePlugin::getRoutingStatus()
+{
+    std::string s;
+    std::ifstream ifs;
+    ifs.open (FN_IP_FORWATD);
+    if (!ifs.is_open()) {
+        throw std::runtime_error("Error opening " + FN_IP_FORWATD);
+    }
+    ifs >> s;
+    ifs.close();
+    return s;
+}
+
+void ArachnePlugin::setRoutingStatus(const std::string&)
+{
+    std::ofstream ofs;
+    ofs.open(FN_IP_FORWATD);
+    if (!ofs.is_open()) {
+        throw std::runtime_error("Cannot open " + FN_IP_FORWATD + " for reading");
+    }
+    ofs << _savedIpForward << std::endl;
+    ofs.close();
 }
