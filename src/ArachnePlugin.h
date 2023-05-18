@@ -34,9 +34,9 @@ public:
     ClientSession *createClientSession();
     int userAuthPassword(const char *envp[], ClientSession*);
 
-    void setRouting();
-    void restoreRouting();
-    void createFirewallZone();
+    void setRouting(ClientSession*);
+    void restoreRouting(ClientSession*);
+    void createFirewallZone(ClientSession*);
 
     int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
