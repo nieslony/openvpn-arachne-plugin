@@ -19,6 +19,7 @@ EXTRA_DIST= \
         ArachneLogger.h \
         ClientSession.h \
         Config.h \
+        FirewallD1.h \
         Http.h \
         Url.h
 
