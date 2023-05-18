@@ -1,7 +1,9 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
+#include "FirewallD1.h"
 
 #include <fstream>
+#include <sstream>
 
 static const std::string URL_AUTH = "/auth";
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
@@ -18,43 +20,13 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
 
     readConfigFile(configFile);
     _authUrl = _config.get("auth-url");
-    std::string enableRouting = _config.get("enable-routing");
-    if (enableRouting == "RESTORE_ON_EXIT") {
-        _savedIpForward = getRoutingStatus();
-        if (enableRouting == "1") {
-            _logger.note() << "Enabling IP forwarding" << std::flush;
-            setRoutingStatus("1");
-        } else {
-            _logger.note() << "IP forwarding already enabled" << std::flush;
-        }
-    } else if (enableRouting == "ENABLE") {
-        _logger.note() << "Enabling IP forwarding" << std::flush;
-        setRoutingStatus("1");
-    } else if (enableRouting == "OFF") {
-        _logger.note() << "Don't enable IP forwarding" << std::flush;
-    } else {
-        throw PluginException("Invalid value of enable-routing: " + enableRouting);
-    }
-
+    _enableRouting = _config.get("enable-routing");
     _enableFirewall = _config.getBool("enable-firewall");
-    if (_enableFirewall) {
-        _firewallZone = _config.get("firewall-zone");
-        if (_firewallZone == "") {
-            _firewallZone = "arachne";
-            _logger.warning() << "firewall-zone not given, fall back to arachne" << std::flush;
-        } else {
-            _logger.note() << "Enabling firewall zone \"" + _firewallZone << "\"" << std::flush;
-        }
-    }
+    _firewallZone = _config.get("firewall-zone");
 }
 
 ArachnePlugin::~ArachnePlugin()
 {
-    _logger.note() << "Clean up" << std::flush;
-    if (_savedIpForward != "1" && _savedIpForward != "") {
-        _logger.note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
-        setRoutingStatus(_savedIpForward);
-    }
 }
 
 ClientSession *ArachnePlugin::createClientSession()
@@ -126,4 +98,88 @@ void ArachnePlugin::setRoutingStatus(const std::string&)
     }
     ofs << _savedIpForward << std::endl;
     ofs.close();
+}
+
+void ArachnePlugin::setRouting()
+{
+    if (_enableRouting == "RESTORE_ON_EXIT") {
+        _savedIpForward = getRoutingStatus();
+        if (_enableRouting == "1") {
+            _logger.note() << "Enabling IP forwarding" << std::flush;
+            setRoutingStatus("1");
+        } else {
+            _logger.note() << "IP forwarding already enabled" << std::flush;
+        }
+    } else if (_enableRouting == "ENABLE") {
+        _logger.note() << "Enabling IP forwarding" << std::flush;
+        setRoutingStatus("1");
+    } else if (_enableRouting == "OFF") {
+        _logger.note() << "Don't enable IP forwarding" << std::flush;
+    } else {
+        throw PluginException("Invalid value of enable-routing: " + _enableRouting);
+    }
+}
+
+void ArachnePlugin::restoreRouting()
+{
+    if (_savedIpForward != "1" && _savedIpForward != "") {
+        _logger.note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
+        setRoutingStatus(_savedIpForward);
+    } else {
+        _logger.note() << "Leaving routing untouched" << std::flush;
+    }
+}
+
+void ArachnePlugin::createFirewallZone()
+{
+    if (_enableFirewall) {
+        _logger.note() << "Creating firewall zone '" << _firewallZone << "'" << std::flush;
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1 firewall(connection);
+        FirewallD1_Config firewallConfig(connection);
+
+        std::map<std::string, sdbus::Variant> settings;
+        settings["target"] = "DROP";
+        settings["interfaces"] = std::vector<std::string> { "arachne" };
+
+        try {
+            firewallConfig.addZone2(_firewallZone, settings);
+            firewall.reload();
+        }
+        catch (const sdbus::Error &ex)
+        {
+            std::string msg = "NAME_CONFLICT";
+            if (ex.getName() == "org.fedoraproject.FirewallD1.Exception" &&
+                ex.getMessage().substr(0, msg.length()) == msg)
+            {
+                _logger.warning() << "Firewall zone '" << _firewallZone << "' already exists" << std::flush;
+            } else {
+                std::stringstream msg;
+                msg << "Cannot create firewall zone " << _firewallZone
+                    << ": [" << ex.getName() << "]: "
+                    << ex.getMessage()
+                    ;
+                throw PluginException(msg.str());
+            }
+        }
+    } else {
+        _logger.note() << "Firewall is disabled" << std::flush;
+    }
+}
+
+int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept
+{
+    _logger.note() << "Plugin up..." << std::flush;
+    setRouting();
+    createFirewallZone();
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept
+{
+    _logger.note() << "Plugin down..." << std::flush;
+    restoreRouting();
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }

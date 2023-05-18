@@ -18,11 +18,11 @@ openvpn_plugin_open_v3 (const int version,
         ArachnePlugin *context = new ArachnePlugin(arguments);
 
         retptr->type_mask =
-            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) /* |
-            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_CONNECT_V2) |
-            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_DISCONNECT) |
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) |
+/*            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_CONNECT_V2) |
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_DISCONNECT) |*/
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_UP) |
-            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_DOWN) */
+            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_DOWN)
         ;
 
         retptr->handle = (openvpn_plugin_handle_t*) context;
@@ -64,6 +64,10 @@ openvpn_plugin_func_v3(const int version,
     switch (args->type) {
         case OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY:
             return plugin->userAuthPassword(args->envp, session);
+        case OPENVPN_PLUGIN_UP:
+            return plugin->pluginUp(args->argv, args->envp, session);
+        case OPENVPN_PLUGIN_DOWN:
+            return plugin->pluginDown(args->argv, args->envp, session);
     }
 
     return OPENVPN_PLUGIN_FUNC_ERROR;

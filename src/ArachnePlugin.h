@@ -34,18 +34,27 @@ public:
     ClientSession *createClientSession();
     int userAuthPassword(const char *envp[], ClientSession*);
 
+    void setRouting();
+    void restoreRouting();
+    void createFirewallZone();
+
+    int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
     int _lastSession;
+    Config _config;
+
     Url _authUrl;
     std::string _savedIpForward;
+    std::string _enableRouting;
     bool _enableFirewall;
     std::string _firewallZone;
 
     const char* getEnv(const char* key, const char *envp[]);
     void readConfigFile(const char*);
-    Config _config;
 
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
