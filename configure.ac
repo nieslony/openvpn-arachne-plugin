@@ -18,7 +18,6 @@ LT_INIT([disable-static])
 AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 
 AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
-AC_CHECK_HEADERS(boost/algorithm/string.hpp)
 
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.0],,
     AC_MSG_ERROR([You need the sdbus-c++ library (version 1.0 or newer)]
