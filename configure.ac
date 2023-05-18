@@ -18,11 +18,17 @@ LT_INIT([disable-static])
 AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
 
 AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
+AX_BOOST_BASE
+AX_BOOST_SYSTEM
+AX_BOOST_REGEX
 
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.0],,
     AC_MSG_ERROR([You need the sdbus-c++ library (version 1.0 or newer)]
     [http://www.kistler.com/])
 )
+
+AC_CHECK_TOOL(XMLSTARLET, xmlstarlet)
+AS_IF([test x"$XMLSTARLET" = x""], [AC_MSG_ERROR([Please install xmlstarlet $XMLSTARLET])])
 
 AC_SUBST([plugindir])
 
