@@ -20,6 +20,7 @@ public:
     ~ClientSession();
 
     bool authUser(const Url &url, const std::string &username, const std::string &password);
+    ArachneLogger &getLogger() { return _logger; }
 
 private:
     ArachneLogger _logger;
