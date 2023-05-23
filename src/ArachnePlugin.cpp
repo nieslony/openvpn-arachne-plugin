@@ -197,10 +197,14 @@ int ArachnePlugin::clientConnect(
 {
     std::string clientIp(getEnv("ifconfig_pool_remote_ip", envp));
 
-    if (session->setFirewallRules(clientIp, _firewallUrl))
-        return OPENVPN_PLUGIN_FUNC_SUCCESS;
-    else
-        return OPENVPN_PLUGIN_FUNC_ERROR;
+    if (_enableFirewall)
+    {
+        if (session->setFirewallRules(clientIp) && session->updateEverybodyRules())
+            return OPENVPN_PLUGIN_FUNC_SUCCESS;
+        else
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
 int ArachnePlugin::clientDisconnect(
@@ -209,10 +213,14 @@ int ArachnePlugin::clientDisconnect(
     ClientSession* session
 ) noexcept
 {
-    if (session->removeFirewalRules())
-        return OPENVPN_PLUGIN_FUNC_SUCCESS;
-    else
-        return OPENVPN_PLUGIN_FUNC_ERROR;
+    if (_enableFirewall)
+    {
+        if (session->removeFirewalRules() && session->updateEverybodyRules())
+            return OPENVPN_PLUGIN_FUNC_SUCCESS;
+        else
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
 void ArachnePlugin::removeAllRichRules()

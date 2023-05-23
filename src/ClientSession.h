@@ -11,10 +11,13 @@
 #error "Cannot include openvpn-plugin.h"
 #endif
 
+#include <boost/property_tree/ptree.hpp>
+
 #include <list>
 
 class Url;
 class ArachnePlugin;
+
 
 class ClientSession
 {
@@ -23,8 +26,9 @@ public:
     ~ClientSession();
 
     bool authUser(const Url &url, const std::string &username, const std::string &password);
-    bool setFirewallRules(const std::string &clientIp, const Url &url);
+    bool setFirewallRules(const std::string &clientIp);
     bool removeFirewalRules();
+    bool updateEverybodyRules();
 
     ArachneLogger &getLogger() { return _logger; }
 
@@ -35,6 +39,11 @@ private:
     std::string _username;
     std::string _password;
     std::list<std::string> _richRules;
+
+    std::string createRichRule(
+        boost::property_tree::ptree::value_type &node,
+        const std::string &clientIp = ""
+    );
 };
 
 #endif

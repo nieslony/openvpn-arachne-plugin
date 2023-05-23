@@ -9,6 +9,7 @@ arachne_la_SOURCES = \
         ArachneLogger.cpp \
         ClientSession.cpp \
         Config.cpp \
+        FirewallD1.cpp \
         Http.cpp \
         Response.cpp \
         Request.cpp \

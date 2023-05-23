@@ -44,6 +44,7 @@ public:
     int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
     const std::string &getFirewallZone() { return _firewallZone; }
+    const Url &getFirewallUrl() { return _firewallUrl; }
 
 private:
     ArachneLogger _logger;
