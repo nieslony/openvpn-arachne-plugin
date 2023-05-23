@@ -62,7 +62,7 @@ std::string Request::methodStr() const
 
 std::ostream &operator<<(std::ostream& os, const Request& r)
 {
-    os << r.methodStr() << " "  << r.url().path() << " HTTP/1.0" << "\r\n";
+    os << r.methodStr() << " "  << r.url().path() << r.url().query() << " HTTP/1.0" << "\r\n";
     os << "Host: " << r.url().host() << "\r\n";
     os << "Accept: */*" << "\r\n";
     os << "Connection: close" << "\r\n";
