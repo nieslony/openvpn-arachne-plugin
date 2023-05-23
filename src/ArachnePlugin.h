@@ -43,6 +43,8 @@ public:
     int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
+    const std::string &getFirewallZone() { return _firewallZone; }
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
@@ -61,6 +63,7 @@ private:
 
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
+    void removeAllRichRules();
 };
 
 #endif

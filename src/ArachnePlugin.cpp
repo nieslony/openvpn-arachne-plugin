@@ -36,7 +36,7 @@ ArachnePlugin::~ArachnePlugin()
 
 ClientSession *ArachnePlugin::createClientSession()
 {
-    return new ClientSession(_logFunc, ++_lastSession);
+    return new ClientSession(*this, _logFunc, ++_lastSession);
 }
 
 const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
@@ -175,6 +175,7 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessio
     session->getLogger().note() << "Plugin up..." << std::flush;
     setRouting(session);
     createFirewallZone(session);
+    removeAllRichRules();
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
@@ -182,6 +183,7 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessio
 int ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session) noexcept
 {
     session->getLogger() << "Plugin down..." << std::flush;
+    removeAllRichRules();
     restoreRouting(session);
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
@@ -193,10 +195,9 @@ int ArachnePlugin::clientConnect(
     ClientSession*session
 ) noexcept
 {
-    std::string username(getEnv("username", envp));
-    std::string password(getEnv("password", envp));
+    std::string clientIp(getEnv("ifconfig_pool_remote_ip", envp));
 
-    if (session->setFirewallRules(_firewallUrl))
+    if (session->setFirewallRules(clientIp, _firewallUrl))
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     else
         return OPENVPN_PLUGIN_FUNC_ERROR;
@@ -212,4 +213,16 @@ int ArachnePlugin::clientDisconnect(
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     else
         return OPENVPN_PLUGIN_FUNC_ERROR;
+}
+
+void ArachnePlugin::removeAllRichRules()
+{
+    _logger.note() << "Removing all rich rules" << std::flush;
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1_Zone firewallZone(connection);
+    for (auto r : firewallZone.getRichRules(_firewallZone))
+    {
+        _logger.note() << "Removing rich rule " << r << std::flush;
+        firewallZone.removeRichRule(_firewallZone, r);
+    }
 }
