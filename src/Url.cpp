@@ -64,6 +64,27 @@ std::string Url::str() const
     if (_port != 0)
         os << ":" << _port;
     os << _path;
+    os << query();
 
     return os.str();
+}
+
+void Url::addQuery(const std::string &key, const std::string &value)
+{
+    _query[key] = value;
+}
+
+std::string Url::query() const
+{
+    if (_query.empty())
+        return "";
+
+    std::stringstream os;
+    os << "?";
+    for (const auto [key, value] : _query)
+    {
+        os << key << "=" << value << "&";
+    }
+    std::string queryStr = os.str();
+    return queryStr.substr(0, queryStr.length()-1);
 }
