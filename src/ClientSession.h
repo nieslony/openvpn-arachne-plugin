@@ -20,11 +20,16 @@ public:
     ~ClientSession();
 
     bool authUser(const Url &url, const std::string &username, const std::string &password);
+    bool setFirewallRules(const Url &url);
+    bool removeFirewalRules();
+
     ArachneLogger &getLogger() { return _logger; }
 
 private:
     ArachneLogger _logger;
     int _sessionId;
+    std::string _username;
+    std::string _password;
 };
 
 #endif

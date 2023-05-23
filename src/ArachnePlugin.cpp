@@ -7,7 +7,6 @@
 #include <sstream>
 #include <boost/algorithm/string.hpp>
 
-static const std::string URL_AUTH = "/auth";
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
@@ -19,12 +18,16 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
     const char* configFile = in_args->argv[1];
     if (configFile == NULL)
         throw PluginException("Please specify configuration file");
+    _logger.note() << "Reading configuration from " << configFile << std::flush;
 
     readConfigFile(configFile);
     _authUrl = _config.get("auth-url");
     _enableRouting = _config.get("enable-routing");
     _enableFirewall = _config.getBool("enable-firewall");
-    _firewallZone = _config.get("firewall-zone");
+    if (_enableFirewall) {
+        _firewallZone = _config.get("firewall-zone");
+        _firewallUrl = _config.get("firewall-url");
+    }
 }
 
 ArachnePlugin::~ArachnePlugin()
@@ -60,7 +63,6 @@ int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
     std::string password(getEnv("password", envp));
 
     Url url(_authUrl);
-    url.path(_authUrl.path() + URL_AUTH);
     if (session->authUser(url, username, password))
         return OPENVPN_PLUGIN_FUNC_SUCCESS;
     else
@@ -183,4 +185,31 @@ int ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSess
     restoreRouting(session);
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
+}
+
+int ArachnePlugin::clientConnect(
+    const char *argv[],
+    const char *envp[],
+    ClientSession*session
+) noexcept
+{
+    std::string username(getEnv("username", envp));
+    std::string password(getEnv("password", envp));
+
+    if (session->setFirewallRules(_firewallUrl))
+        return OPENVPN_PLUGIN_FUNC_SUCCESS;
+    else
+        return OPENVPN_PLUGIN_FUNC_ERROR;
+}
+
+int ArachnePlugin::clientDisconnect(
+    const char *argv[],
+    const char *envp[],
+    ClientSession* session
+) noexcept
+{
+    if (session->removeFirewalRules())
+        return OPENVPN_PLUGIN_FUNC_SUCCESS;
+    else
+        return OPENVPN_PLUGIN_FUNC_ERROR;
 }

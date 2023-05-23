@@ -40,6 +40,8 @@ public:
 
     int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
 private:
     ArachneLogger _logger;
@@ -48,6 +50,7 @@ private:
     Config _config;
 
     Url _authUrl;
+    Url _firewallUrl;
     std::string _savedIpForward;
     std::string _enableRouting;
     bool _enableFirewall;
