@@ -35,7 +35,6 @@ std::istream &operator>>(std::istream& is, Response &r)
     r._protocol = head.at(0);
     r._status = std::stoi(head.at(1));
     r._status_str = head.at(2);
-    r._status_str = head.at(2);
 
     for (line = getChoppedLine(is); !line.empty(); line = getChoppedLine(is)) {
         size_t pos = line.find(": ");
