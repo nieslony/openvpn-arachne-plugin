@@ -28,7 +28,14 @@ bool ClientSession::authUser(const Url &url, const std::string &username, const 
     http::Response response;
     http::Http httpClient;
     _logger.note() << "Connecting to " << url.str() << std::flush;
-    httpClient.doHttp(request, response);
+    try {
+        httpClient.doHttp(request, response);
+    }
+    catch (http::HttpException &ex)
+    {
+        _logger.error() << ex.what() << std::endl;
+        return false;
+    }
     _logger.note() << "Got " << response.status() << "(" << response.status_str() << ")" << std::flush;
     if (response.status() == 200) {
         _logger.note() << "Authenticating successfull" << std::flush;

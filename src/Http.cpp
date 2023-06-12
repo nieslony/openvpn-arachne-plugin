@@ -1,4 +1,5 @@
 #include "Http.h"
+#include <boost/system/detail/error_code.hpp>
 
 #define BOOST_BIND_NO_PLACEHOLDERS
 
@@ -50,6 +51,15 @@ void Http::doHttp(const Request &request, Response &response, std::ostream *os)
 
     if (request.url().protocol() == "http") {
         boost::asio::ip::tcp::iostream tcps(request.url().host(), portStr);
+        if (!tcps)
+        {
+            boost::system::error_code error(tcps.error());
+            std::stringstream msg;
+            msg
+                << "Cannot connect to " << request.url().host() << ":" << portStr
+                << " \"" << error.message() << "\"";
+            throw HttpException(msg.str());
+        }
 
         doHttpInt(request, response, tcps, os);
     } else {
@@ -66,10 +76,19 @@ void Http::doHttp(const Request &request, Response &response, std::ostream *os)
         boost::asio::connect(socket.lowest_layer(), endpoint_iterator);
 
         socket.set_verify_mode(boost::asio::ssl::verify_peer);
-        socket.set_verify_callback(boost::asio::ssl::rfc2818_verification(request.url().host()));
+        socket.set_verify_callback(
+            boost::asio::ssl::rfc2818_verification(request.url().host())
+        );
         socket.handshake(ssl_socket::client);
 
         boost::iostreams::stream<SslWrapper> ssls(socket);
+        if (!ssls)
+        {
+            std::stringstream msg;
+            msg
+                << "Cannot connect to " << request.url().host() << ":" << portStr;
+            throw HttpException(msg.str());
+        }
 
         doHttpInt(request, response, ssls, os);
     }

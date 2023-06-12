@@ -74,7 +74,9 @@ std::istream &operator>>(std::istream& os, Response &);
 
 class HttpException : public std::runtime_error {
 public:
-    HttpException(const std::string &msg);
+    HttpException(const std::string &msg)
+        : std::runtime_error(msg)
+    {}
 };
 
 class Http {
