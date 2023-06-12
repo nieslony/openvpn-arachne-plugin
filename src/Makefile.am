@@ -15,7 +15,9 @@ arachne_la_SOURCES = \
         Request.cpp \
         Url.cpp
 
-EXTRA_DIST= \
+DBUS_GENERATED = FirewallD1_Proxy.h FirewallD1_Config_Proxy.h
+
+EXTRA_DIST= ${DBUS_GENERATED} \
         ArachnePlugin.h \
         ArachneLogger.h \
         ClientSession.h \
@@ -23,8 +25,6 @@ EXTRA_DIST= \
         FirewallD1.h \
         Http.h \
         Url.h
-
-DBUS_GENERATED = FirewallD1_Proxy.h FirewallD1_Config_Proxy.h
 
 clean-local:
 	rm -f ${DBUS_GENERATED}
