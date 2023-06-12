@@ -7,12 +7,14 @@ License:    GPL-2.0+
 URL:        http://www.nieslony.site/arachne
 Source0:    %{name}-%{version}.tar.gz
 
-BuildRequires:  openvpn-devel, boost-devel, gcc-c++, openssl-devel, sdbus-cpp-devel
+BuildRequires:  gcc-c++, xmlstarlet
+BuildRequires:  openvpn-devel, boost-devel, openssl-devel, sdbus-cpp-devel
 Requires:       boost
 
 %description
 openVPN plugin needed by arachne
  - authentication via HTTP(S) url
+ - setup firewall rules based on user/groups
 
 %prep
 %setup -q
