@@ -225,12 +225,14 @@ int ArachnePlugin::clientDisconnect(
 
 void ArachnePlugin::removeAllRichRules()
 {
-    _logger.note() << "Removing all rich rules" << std::flush;
-    auto connection = sdbus::createSystemBusConnection();
-    FirewallD1_Zone firewallZone(connection);
-    for (auto r : firewallZone.getRichRules(_firewallZone))
-    {
-        _logger.note() << "Removing rich rule " << r << std::flush;
-        firewallZone.removeRichRule(_firewallZone, r);
+    if (_enableFirewall) {
+        _logger.note() << "Removing all rich rules" << std::flush;
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_Zone firewallZone(connection);
+        for (auto r : firewallZone.getRichRules(_firewallZone))
+        {
+            _logger.note() << "Removing rich rule " << r << std::flush;
+            firewallZone.removeRichRule(_firewallZone, r);
+        }
     }
 }
