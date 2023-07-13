@@ -81,7 +81,7 @@ std::string Url::query() const
 
     std::stringstream os;
     os << "?";
-    for (const auto [key, value] : _query)
+    for (auto const& [key, value] : _query)
     {
         os << key << "=" << value << "&";
     }
