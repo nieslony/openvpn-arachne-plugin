@@ -9,6 +9,7 @@ Source0:    %{name}-%{version}.tar.gz
 
 BuildRequires:  gcc-c++, xmlstarlet
 BuildRequires:  openvpn-devel, boost-devel, openssl-devel, sdbus-cpp-devel
+BuildRequires:  selinux-policy-devel
 Requires:       boost
 
 %description
@@ -22,13 +23,16 @@ openVPN plugin needed by arachne
 %build
 %configure
 %{__make} %{?_smp_mflags}
+make -f /usr/share/selinux/devel/Makefile openvpn-plugin-arachne.pp
 
 %install
 %make_install
+install -m 0644 openvpn-plugin-arachne.pp %{buildroot}%{_datadir}/selinux/packages
 
 %files
 %license LICENSE
 %{_libdir}/openvpn/plugins
+%{_datadir}/selinux/packages
 
 %changelog
 * Sun Nov 19 2017 Claas Nieslony <claas@nieslony.at> 0.1.0
