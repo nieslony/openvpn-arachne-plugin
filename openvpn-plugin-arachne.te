@@ -1,13 +1,19 @@
 policy_module(openvpn-plugin-arachne, 1.0)
 
 require {
-        type sysctl_net_t;
+        type firewalld_t;
         type openvpn_etc_t;
         type openvpn_t;
+        type sysctl_net_t;
+        class dbus { send_msg };
+        class file { write };
         class sock_file { create unlink };
-        class file write;
 }
 
+#============= firewalld_t ==============
+allow firewalld_t       openvpn_t:dbus          { send_msg };
+
 #============= openvpn_t ==============
-allow openvpn_t openvpn_etc_t:sock_file { create unlink };
-allow openvpn_t sysctl_net_t:file write;
+allow openvpn_t         firewalld_t:dbus        { send_msg };
+allow openvpn_t         openvpn_etc_t:sock_file { create unlink };
+allow openvpn_t         sysctl_net_t:file       { write };
