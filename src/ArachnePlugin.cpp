@@ -10,7 +10,7 @@
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
-    : _logger(in_args->callbacks->plugin_vlog), _lastSession(0)
+    : _logger(in_args->callbacks->plugin_vlog), _lastSession(0), _autoAddIcmpRules(false)
 {
     _logger.note() << "Initializing" << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;
@@ -26,7 +26,8 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
     _enableFirewall = _config.getBool("enable-firewall");
     if (_enableFirewall) {
         _firewallZone = _config.get("firewall-zone");
-        _firewallUrl = _config.get("firewall-url");
+        _firewallUrlUser = _config.get("firewall-url") + "/user_rules";
+        _firewallUrlEverybody = _config.get("firewall-url") + "/everybody_rules";
     }
 }
 

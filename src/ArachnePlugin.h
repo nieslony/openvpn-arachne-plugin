@@ -44,7 +44,11 @@ public:
     int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
     const std::string &getFirewallZone() { return _firewallZone; }
-    const Url &getFirewallUrl() { return _firewallUrl; }
+    const Url &getFirewallUrlUser() { return _firewallUrlUser; }
+    const Url &getFirewallUrlEverybody() { return _firewallUrlEverybody; }
+
+    void setAutoAddIcmpRules(bool b) { _autoAddIcmpRules = b; }
+    const bool autoAddIcmpRules() { return _autoAddIcmpRules; }
 
 private:
     ArachneLogger _logger;
@@ -53,11 +57,13 @@ private:
     Config _config;
 
     Url _authUrl;
-    Url _firewallUrl;
+    Url _firewallUrlUser;
+    Url _firewallUrlEverybody;
     std::string _savedIpForward;
     std::string _enableRouting;
     bool _enableFirewall;
     std::string _firewallZone;
+    bool _autoAddIcmpRules;
 
     const char* getEnv(const char* key, const char *envp[]);
     void readConfigFile(const char*);

@@ -54,13 +54,13 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
     _logger.note() << "Setting firewall rules for user " << _username
         << ", connected from " << clientIp
         << std::flush;
-    http::Request request(http::GET, _plugin.getFirewallUrl());
+    http::Request request(http::GET, _plugin.getFirewallUrlUser());
     request.basicAuth(_username, _password);
     http::Response response;
     http::Http httpClient;
     std::stringstream body;
 
-    _logger.note() << "Connecting to " << _plugin.getFirewallUrl().str() << std::flush;
+    _logger.note() << "Connecting to " << _plugin.getFirewallUrlUser().str() << std::flush;
     httpClient.doHttp(request, response, &body);
 
     if (response.status() != 200) {
@@ -110,8 +110,7 @@ bool ClientSession::removeFirewalRules()
 bool ClientSession::updateEverybodyRules()
 {
     _logger.note() << "Updating everybody rules" << std::flush;
-    Url url(_plugin.getFirewallUrl());
-    url.addQuery("type", "everybody");
+    Url url(_plugin.getFirewallUrlEverybody());
     _logger.note() << "Getting rules from " << url.str() << std::flush;
     http::Request request(http::GET, url);
     request.basicAuth(_username, _password);
@@ -129,28 +128,88 @@ bool ClientSession::updateEverybodyRules()
         return false;
     }
 
+    _logger.note() << "Parsing " << body.str() << std::endl;
+    std::set<std::string> validRichRules;
     auto connection = sdbus::createSystemBusConnection();
     FirewallD1_Zone zone(connection);
     const std::string &zoneName = _plugin.getFirewallZone();
-    std::set<std::string> validRichRules;
+    std::string icmpRules;
+    std::set<std::string> destIps;
+    try {
+        icmpRules = json.get<std::string>("icmpRules");
+        _logger.note() << "ICMP rules: " << icmpRules << std::flush;
 
-    BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json)
-    {
-        std::string rule = createRichRule(v);
-        validRichRules.insert(rule);
+        BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json.get_child("richRules"))
+        {
+            std::string rule = createRichRule(v);
+            validRichRules.insert(rule);
+            destIps.insert(v.second.get<std::string>("destinationAddress"));
+        }
+    }
+    catch (boost::property_tree::ptree_bad_path &ex) {
+        _logger.error() << "Invalid firewall rules: " << ex.what() << std::flush;
+        return false;
+    }
+
+    if (icmpRules == "ALLOW_ALL") {
+        if (!zone.queryIcmpBlockInversion(zoneName))
+            zone.addIcmpBlockInversion(zoneName);
+        if (!zone.queryIcmpBlock(zoneName, "echo-reply"))
+            zone.addIcmpBlock(zoneName, "echo-reply", FirewallD1::DEFAULT_TIMEOUT);
+        if (!zone.queryIcmpBlock(zoneName, "echo-request"))
+            zone.addIcmpBlock(zoneName, "echo-request", FirewallD1::DEFAULT_TIMEOUT);
+        _plugin.setAutoAddIcmpRules(false);
+    }
+    else if (icmpRules == "DENY") {
+        if (zone.queryIcmpBlockInversion(zoneName))
+            zone.removeIcmpBlockInversion(zoneName);
+        if (zone.queryIcmpBlock(zoneName, "echo-reply"))
+            zone.removeIcmpBlock(zoneName, "echo-reply");
+        if (zone.queryIcmpBlock(zoneName, "echo-request"))
+            zone.removeIcmpBlock(zoneName, "echo-request");
+        _plugin.setAutoAddIcmpRules(false);
+    }
+    else if (icmpRules == "ALLOW_ALL_GRANTED") {
+        if (!zone.queryIcmpBlockInversion(zoneName))
+            zone.addIcmpBlockInversion(zoneName);
+        if (zone.queryIcmpBlock(zoneName, "echo-reply"))
+            zone.removeIcmpBlock(zoneName, "echo-reply");
+        if (zone.queryIcmpBlock(zoneName, "echo-request"))
+            zone.removeIcmpBlock(zoneName, "echo-request");
+        _plugin.setAutoAddIcmpRules(true);
+        for (auto ip : destIps) {
+            std::stringstream request;
+                request
+                    << "rule family=\"ipv4\""
+                    << " destination address=\"" << ip << "\""
+                    << " icmp-block name=\"echo-reply\"";
+            std::stringstream reply;
+                reply
+                    << "rule family=\"ipv4\""
+                    << " destination address=\"" << ip << "\""
+                    << " icmp-block name=\"echo-reply\"";
+            validRichRules.insert(request.str());
+            validRichRules.insert(reply.str());
+        }
+    } else {
+        _logger.error() << "Invalid value of icmpRules: " << icmpRules << std::flush;
+        return false;
+    }
+
+    for (auto rule : validRichRules) {
         if (!zone.queryRichRule(zoneName, rule)) {
             _logger.note() << "Adding rich rule " << rule << std::flush;
             zone.addRichRule(zoneName, rule, FirewallD1::DEFAULT_TIMEOUT);
         }
     }
+
     for (auto r : zone.getRichRules(zoneName)) {
         if (
             r.find(" source address") == std::string::npos
             && validRichRules.find(r) == validRichRules.end()
-        )
-        {
+        ) {
             _logger.note()
-                << "Remove rich rule, wich is no longer valid: "
+                << "Remove rich rule, which is no longer valid: "
                 << r
                 << std::flush;
             zone.removeRichRule(zoneName, r);
