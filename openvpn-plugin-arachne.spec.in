@@ -27,6 +27,7 @@ make -f /usr/share/selinux/devel/Makefile openvpn-plugin-arachne.pp
 
 %install
 %make_install
+mkdir -pv %{buildroot}%{_datadir}/selinux/packages
 install -m 0644 openvpn-plugin-arachne.pp %{buildroot}%{_datadir}/selinux/packages
 
 %files
