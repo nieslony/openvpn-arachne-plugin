@@ -138,33 +138,71 @@ void ArachnePlugin::restoreRouting(ClientSession *session)
 void ArachnePlugin::createFirewallZone(ClientSession *session)
 {
     if (_enableFirewall) {
-        session->getLogger().note() << "Creating firewall zone '" << _firewallZone << "'" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1 firewall(connection);
         FirewallD1_Config firewallConfig(connection);
 
-        std::map<std::string, sdbus::Variant> settings;
-        settings["target"] = "DROP";
-        settings["interfaces"] = std::vector<std::string> { "arachne" };
-
         try {
-            firewallConfig.addZone2(_firewallZone, settings);
+            std::vector<std::string> zones = firewallConfig.getZoneNames();
+            if (std::any_of(
+                zones.begin(), zones.end(),
+                [this](std::string s){ return s == _firewallZone; }
+            )
+            ) {
+                session->getLogger().note()
+                    << "Firewall Zone '" << _firewallZone << "' already exists"
+                    << std::flush;
+            }
+            else {
+                session->getLogger().note()
+                    << "Creating firewall zone '" << _firewallZone << "'"
+                    << std::flush;
+                std::map<std::string, sdbus::Variant> settings;
+                settings["target"] = "DROP";
+                settings["interfaces"] = std::vector<std::string> { "arachne" };
+                firewallConfig.addZone2(_firewallZone, settings);
+            }
+
+            std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
+            std::map<std::string, std::vector<std::string>> policies;
+            policies["arachne-incoming"] = { "arachne", "public" };
+            policies["arachne-outgoing"] = { "public", "arachne" };
+            for (const auto&[pname, pzones] : policies) {
+                if (std::any_of(
+                    currentPolicies.begin(), currentPolicies.end(),
+                    [pname](std::string s){ return s == pname; }
+                )
+                ) {
+                    session->getLogger().note()
+                        << "Firewall Policy '" << pname << "' already exists"
+                        << std::flush;
+                }
+                else {
+                    session->getLogger().note()
+                        << "Creating firewall policy '" << pname << "'"
+                        << std::flush;
+                    std::map<std::string, sdbus::Variant> settings;
+                    settings["ingress_zones"] = std::vector<std::string> ({
+                        policies[pname].at(0)
+                    });
+                    settings["egress_zones"] = std::vector<std::string> ({
+                        policies[pname].at(1)
+                    });
+                    settings["target"] = "CONTINUE";
+                    firewallConfig.addPolicy(pname, settings);
+                }
+            }
             firewall.reload();
         }
         catch (const sdbus::Error &ex)
         {
-            if (ex.getName() == "org.fedoraproject.FirewallD1.Exception" &&
-                boost::algorithm::starts_with(ex.getMessage(), "NAME_CONFLICT"))
-            {
-                session->getLogger().warning() << "Firewall zone '" << _firewallZone << "' already exists" << std::flush;
-            } else {
-                std::stringstream msg;
-                msg << "Cannot create firewall zone " << _firewallZone
-                    << ": [" << ex.getName() << "]: "
-                    << ex.getMessage()
-                    ;
-                throw PluginException(msg.str());
-            }
+            std::stringstream msg;
+            msg << "Cannot create firewall zone " << _firewallZone
+                << ": [" << ex.getName() << "]: "
+                << ex.getMessage()
+                ;
+            throw PluginException(msg.str());
+
         }
     } else {
         _logger.note() << "Firewall is disabled" << std::flush;

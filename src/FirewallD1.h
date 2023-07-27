@@ -100,4 +100,23 @@ protected:
     void onIcmpBlockInversionRemoved(const std::string&) {}
 };
 
+class FirewallD1_Policy
+    : public sdbus::ProxyInterfaces<org::fedoraproject::FirewallD1::policy_proxy>
+{
+public:
+    FirewallD1_Policy(std::unique_ptr<sdbus::IConnection> &connection)
+        : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+    {
+        registerProxy();
+    }
+
+    ~FirewallD1_Policy()
+    {
+        unregisterProxy();
+    }
+
+protected:
+    void onPolicyUpdated(const std::string&, const std::map<std::__cxx11::basic_string<char>, sdbus::Variant>&) {}
+};
+
 #endif
