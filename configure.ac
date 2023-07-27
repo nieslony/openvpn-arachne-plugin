@@ -15,7 +15,7 @@ AM_PROG_AR
 AM_PROG_LD
 LT_INIT([disable-static])
 
-AX_CXX_COMPILE_STDCXX_17([noext], [mandatory])
+AX_CXX_COMPILE_STDCXX(20, [noext], [mandatory])
 
 AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
 AX_BOOST_BASE
