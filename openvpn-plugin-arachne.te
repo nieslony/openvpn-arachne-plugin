@@ -1,4 +1,4 @@
-policy_module(openvpn-plugin-arachne, 1.0)
+policy_module(openvpn-plugin-arachne, 1.1)
 
 require {
         type firewalld_t;
