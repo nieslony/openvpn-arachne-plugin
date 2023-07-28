@@ -1,6 +1,5 @@
 #include "ClientSession.h"
 #include "Http.h"
-#include "FirewallD1.h"
 #include "ArachnePlugin.h"
 
 #include <boost/property_tree/json_parser.hpp>
@@ -51,44 +50,50 @@ bool ClientSession::authUser(const Url &url, const std::string &username, const 
 
 bool ClientSession::setFirewallRules(const std::string &clientIp)
 {
-    return true;
-    _logger.note() << "Setting firewall rules for user " << _username
-        << ", connected from " << clientIp
-        << std::flush;
-    http::Request request(http::GET, _plugin.getFirewallUrlUser());
-    request.basicAuth(_username, _password);
-    http::Response response;
-    http::Http httpClient;
-    std::stringstream body;
+    _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
+    boost::property_tree::ptree json;
+    if (!readJson(_plugin.getFirewallUrlUser(), json))
+        return false;
 
-    _logger.note() << "Connecting to " << _plugin.getFirewallUrlUser().str() << std::flush;
-    httpClient.doHttp(request, response, &body);
-
-    if (response.status() != 200) {
-        _logger.error() << "Failed downloading firewall rules: " << body.str() << std::flush;
+    try {
+        BOOST_FOREACH(
+            boost::property_tree::ptree::value_type &v, json
+        ) {
+            insertRichRules(v, _richRules, clientIp);
+        }
+    }
+    catch (boost::property_tree::ptree_bad_path &ex) {
+        _logger.error() << "Invalid firewall rules: " << ex.what() << std::flush;
         return false;
     }
+    _logger.note() << _username << "'s rules:" << std::flush;
+    for (auto r : _richRules)
+        _logger.note() << r << std::flush;
 
-    boost::property_tree::ptree json;
     try {
-        boost::property_tree::read_json(body, json);
+        _logger.note() << "Getting current rich rules" << std::flush;
+        std::map<std::string, sdbus::Variant> policySettings =
+            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+        std::map<std::string, sdbus::Variant> newPolicySettings;
+        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
+            const std::vector<std::string> &rulesV(
+                policySettings.at(std::string("rich_rules"))
+            );
+            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
+            rulesS.insert(_richRules.begin(), _richRules.end());
+            newPolicySettings["rich_rules"] =
+                std::vector<std::string>(rulesS.begin(), rulesS.end());
+        }
+        else
+            newPolicySettings["rich_rules"] =
+                std::vector<std::string>(_richRules.begin(), _richRules.end());
+        _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
     }
-    catch (const std::exception &ex) {
-        _logger.error() << "Cannot parse json. " << ex.what() << std::endl;
-        return OPENVPN_PLUGIN_FUNC_ERROR;
+    catch (const sdbus::Error &ex) {
+        _logger.error() << "Cannot update rich rules: " << ex.what() << std::flush;
+        return false;
     }
-
-    auto connection = sdbus::createSystemBusConnection();
-    FirewallD1_Zone zone(connection);
-
-    _logger.note() << "Parsing " << body.str() << std::endl;
-    BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json)
-    {
-        std::string rule = createRichRule(v, clientIp);
-        _logger.note() << "Adding rich rule: "<< rule << std::flush;
-        zone.addRichRule(_plugin.getFirewallZone(), rule, FirewallD1::DEFAULT_TIMEOUT);
-        _richRules.push_back(rule);
-    }
+    _logger.note() << _username << "'s rich rules updated" << std::flush;
 
     return true;
 }
@@ -96,13 +101,31 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
 bool ClientSession::removeFirewalRules()
 {
     _logger.note() << "Removing " << _username << "'s rich rules" << std::flush;
-    auto connection = sdbus::createSystemBusConnection();
-    FirewallD1_Zone zone(connection);
-
-    for (auto r : _richRules)
-    {
-        _logger.note() << "Removing " << _username << "'s rich rule " << r << std::flush;
-        zone.removeRichRule(_plugin.getFirewallZone(), r);
+    try {
+        _logger.note() << "Getting current rich rules" << std::flush;
+        std::map<std::string, sdbus::Variant> policySettings =
+            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+        std::map<std::string, sdbus::Variant> newPolicySettings;
+        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
+            const std::vector<std::string> &rulesV(
+                policySettings.at(std::string("rich_rules"))
+            );
+            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
+            for (auto it=_richRules.begin(); it != _richRules.end(); it++) {
+                _logger.note() << "Removing rule " << *it << std::flush;
+                rulesS.erase(*it);
+            }
+            std::map<std::string, sdbus::Variant> newPolicySettings;
+            newPolicySettings["rich_rules"] =
+                std::vector<std::string>(rulesS.begin(), rulesS.end());
+            _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
+        }
+        else
+            _logger.note() << "There are no rich rules" << std::flush;
+    }
+    catch (const sdbus::Error &ex) {
+        _logger.error() << "Cannot update rich rules: " << ex.what() << std::flush;
+        return false;
     }
 
     return true;
@@ -111,96 +134,68 @@ bool ClientSession::removeFirewalRules()
 bool ClientSession::updateEverybodyRules()
 {
     _logger.note() << "Updating everybody rules" << std::flush;
-    Url url(_plugin.getFirewallUrlEverybody());
-    _logger.note() << "Getting rules from " << url.str() << std::flush;
-    http::Request request(http::GET, url);
-    request.basicAuth(_username, _password);
-    http::Response response;
-    http::Http httpClient;
-    std::stringstream body;
-    httpClient.doHttp(request, response, &body);
-
     boost::property_tree::ptree json;
-    try {
-        boost::property_tree::read_json(body, json);
-    }
-    catch (const std::exception &ex) {
-        _logger.error() << "Cannot parse json. " << ex.what() << std::endl;
+    if (!readJson(_plugin.getFirewallUrlEverybody(), json))
         return false;
-    }
 
-    _logger.note() << "Parsing " << body.str() << std::endl;
     std::set<std::string> newRules;
-    auto connection = sdbus::createSystemBusConnection();
-    FirewallD1_Policy policy(connection);
-    std::string icmpRules;
-    std::set<std::string> destIps;
     try {
-        icmpRules = json.get<std::string>("icmpRules");
+        std::string icmpRules = json.get<std::string>("icmpRules");
         _logger.note() << "ICMP rules: " << icmpRules << std::flush;
+        if (icmpRules == "ALLOW_ALL") {
+            newRules.insert("rule icmp-type name=\"echo-reply\" accept");
+            newRules.insert("rule icmp-type name=\"echo-request\" accept");
+            _icmpRules = ALLOW_ALL;
+        }
+        else if (icmpRules == "DENY") {
+            _icmpRules = DENY;
+        }
+        else if (icmpRules == "ALLOW_ALL_GRANTED") {
+            _icmpRules = ALLOW_ALL_GRANTED;
+        }
+        else {
+            _logger.error() << "Invalid value of icmpRules: " << icmpRules << std::flush;
+            return false;
+        }
 
-        BOOST_FOREACH(boost::property_tree::ptree::value_type &v, json.get_child("richRules"))
-        {
-            std::string rule = createRichRule(v);
-            newRules.insert(rule);
-            destIps.insert(v.second.get<std::string>("destinationAddress"));
+        BOOST_FOREACH(
+            boost::property_tree::ptree::value_type &v,
+            json.get_child("richRules")
+        ) {
+            insertRichRules(v, newRules);
         }
     }
     catch (boost::property_tree::ptree_bad_path &ex) {
         _logger.error() << "Invalid firewall rules: " << ex.what() << std::flush;
         return false;
     }
-
-    if (icmpRules == "ALLOW_ALL") {
-        newRules.insert("rule icmp-type name=\"echo-reply\" accept");
-        newRules.insert("rule icmp-type name=\"echo-request\" accept");
-    }
-    else if (icmpRules == "DENY") {
-    }
-    else if (icmpRules == "ALLOW_ALL_GRANTED") {
-        for (auto ip : destIps) {
-            for (std::string type : { "echo-reply", "echo-request" }) {
-                std::stringstream rule;
-                rule
-                    << "rule"
-                    << " family=\"ipv4\""
-                    << " destination address=\"" << ip << "\""
-                    << " icmp-type name=\"" << type << "\""
-                    << " accept";
-                newRules.insert(rule.str());
-            }
-        }
-    } else {
-        _logger.error() << "Invalid value of icmpRules: " << icmpRules << std::flush;
-        return false;
-    }
-
+    _logger.note() << "Everybody rules:" << std::flush;
+    for (auto r : newRules)
+        _logger.note() << r << std::flush;
 
     try {
         _logger.note() << "Getting current rich rules" << std::flush;
-        std::map<std::string, sdbus::Variant> policySettings;
-        policySettings = policy.getPolicySettings("arachne-incoming");
-        std::vector<std::string> currentRules;
-        if (policySettings.find(std::string("rich_rules")) != policySettings.end())
-            currentRules = policySettings.at(std::string("rich_rules"));
-        std::set<std::string> updRules(currentRules.begin(), currentRules.end());
-        updRules.insert(newRules.begin(), newRules.end());
-        for (const std::string &rule : updRules) {
-            if (rule.find("destination address") == std::string::npos
-                &&
-                newRules.find(rule) == newRules.end()
-            ) {
-                _logger.note() << "Removing rich rule " << rule << std::flush;
-                updRules.erase(rule);
-            }
+        std::map<std::string, sdbus::Variant> policySettings =
+            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+        std::map<std::string, sdbus::Variant> newPolicySettings;
+        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
+            const std::vector<std::string> &rulesV(policySettings.at(std::string("rich_rules")));
+            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
+            std::erase_if(rulesS, [newRules] (std::string r) {
+                return
+                    r.find("source address") == std::string::npos
+                    &&
+                    newRules.find(r) == newRules.end()
+                    ;
+            });
+            rulesS.merge(newRules);
+            newPolicySettings["rich_rules"] =
+                std::vector<std::string>(rulesS.begin(), rulesS.end());
         }
-        _logger.note() << "Everybody rich rules" << std::flush;
-        for (auto r : updRules)
-            _logger.note() << r << std::flush;
-        std::vector<std::string> setRules(updRules.begin(), updRules.end());
-        std::map<std::string, sdbus::Variant> settings;
-        settings["rich_rules"] = setRules;
-        policy.setPolicySettings("arachne-incoming", settings);
+        else
+            newPolicySettings["rich_rules"] =
+                std::vector<std::string>(newRules.begin(), newRules.end());
+        _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
         _logger.error() << "Cannot update rich rules: " << ex.what() << std::flush;
@@ -211,29 +206,88 @@ bool ClientSession::updateEverybodyRules()
     return true;
 }
 
-std::string ClientSession::createRichRule(
-    boost::property_tree::ptree::value_type &node,
+void ClientSession::insertRichRules(
+    const boost::property_tree::ptree::value_type &node,
+    std::set<std::string> &rules,
     const std::string &clientIp
 )
 {
-    std::string destination = node.second.get<std::string>("destinationAddress");
+    boost::optional<std::string> value;
     std::stringstream rule;
+
+    std::string destination;
+    value = node.second.get_optional<std::string>("destinationAddress");
+    if (value.has_value())
+        destination = " destination address=\"" + value.value() + "\"";
 
     rule << "rule family=\"ipv4\"";
     if (!clientIp.empty())
         rule << " source address=\"" << clientIp << "\"";
-    rule << " destination address=\"" << destination << "\"";
+    rule << destination;
 
-    boost::optional<std::string> value;
     value = node.second.get_optional<std::string>("serviceName");
-    if (value.has_value())
+    bool isEverything = true;
+    if (value.has_value()) {
         rule << " service name=\"" << value.value() << "\"";
+        isEverything = false;
+    }
 
     value = node.second.get_optional<std::string>("port");
-    if (value.has_value())
+    if (value.has_value()) {
         rule << " port " << value.value();
+        isEverything = false;
+    }
 
     rule << " accept";
 
-    return rule.str();
+    rules.insert(rule.str());
+
+    if (_icmpRules == ALLOW_ALL_GRANTED && !isEverything) {
+        std::stringstream reply;
+        reply << "rule family=\"ipv4\"";
+        if (!clientIp.empty())
+            reply << " source address=\"" << clientIp << "\"";
+        reply
+            << destination
+            << " icmp-type name=\"echo-reply\""
+            << " accept";
+        std::stringstream request;
+        request << "rule family=\"ipv4\"";
+        if (!clientIp.empty())
+            request << " source address=\"" << clientIp << "\"";
+        request
+            << destination
+            << " icmp-type name=\"echo-request\""
+            << " accept";
+        rules.insert(request.str());
+        rules.insert(reply.str());
+    }
+}
+
+bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
+{
+    _logger.note() << "Getting rules from " << url.str() << std::flush;
+    http::Request request(http::GET, url);
+    request.basicAuth(_username, _password);
+    http::Response response;
+    http::Http httpClient;
+    std::stringstream body;
+
+    try {
+        httpClient.doHttp(request, response, &body);
+    }
+    catch (http::HttpException &ex) {
+        _logger.error() << "Error connecting to " << url.str() << ": " << ex.what() << std::endl;
+        return false;
+    }
+
+    try {
+        boost::property_tree::read_json(body, json);
+    }
+    catch (const std::exception &ex) {
+        _logger.error() << "Cannot parse json. " << ex.what() << std::endl;
+        return false;
+    }
+    _logger.note() << "Got " << body.str() << std::endl;
+    return true;
 }

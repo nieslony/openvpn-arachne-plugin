@@ -9,8 +9,12 @@
 
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
-ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
-    : _logger(in_args->callbacks->plugin_vlog), _lastSession(0), _autoAddIcmpRules(false)
+ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
+    _logger(in_args->callbacks->plugin_vlog),
+    _dbusConnection(sdbus::createSystemBusConnection()),
+    _firewallZone(_dbusConnection),
+    _firewallPolicy(_dbusConnection),
+    _lastSession(0)
 {
     _logger.note() << "Initializing" << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;
@@ -25,7 +29,7 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args)
     _enableRouting = _config.get("enable-routing");
     _enableFirewall = _config.getBool("enable-firewall");
     if (_enableFirewall) {
-        _firewallZone = _config.get("firewall-zone");
+        _firewallZoneName = _config.get("firewall-zone");
         _firewallUrlUser = _config.get("firewall-url") + "/user_rules";
         _firewallUrlEverybody = _config.get("firewall-url") + "/everybody_rules";
     }
@@ -146,21 +150,21 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
             std::vector<std::string> zones = firewallConfig.getZoneNames();
             if (std::any_of(
                 zones.begin(), zones.end(),
-                [this](std::string s){ return s == _firewallZone; }
+                [this](std::string s){ return s == _firewallZoneName; }
             )
             ) {
                 session->getLogger().note()
-                    << "Firewall Zone '" << _firewallZone << "' already exists"
+                    << "Firewall Zone '" << _firewallZoneName << "' already exists"
                     << std::flush;
             }
             else {
                 session->getLogger().note()
-                    << "Creating firewall zone '" << _firewallZone << "'"
+                    << "Creating firewall zone '" << _firewallZoneName << "'"
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
                 settings["target"] = "DROP";
                 settings["interfaces"] = std::vector<std::string> { "arachne" };
-                firewallConfig.addZone2(_firewallZone, settings);
+                firewallConfig.addZone2(_firewallZoneName, settings);
             }
 
             std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
@@ -197,7 +201,7 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
         catch (const sdbus::Error &ex)
         {
             std::stringstream msg;
-            msg << "Cannot create firewall zone " << _firewallZone
+            msg << "Cannot create firewall zone " << _firewallZoneName
                 << ": [" << ex.getName() << "]: "
                 << ex.getMessage()
                 ;
@@ -238,7 +242,7 @@ int ArachnePlugin::clientConnect(
 
     if (_enableFirewall)
     {
-        if (session->setFirewallRules(clientIp) && session->updateEverybodyRules())
+        if (session->updateEverybodyRules() && session->setFirewallRules(clientIp))
             return OPENVPN_PLUGIN_FUNC_SUCCESS;
         else
             return OPENVPN_PLUGIN_FUNC_ERROR;
@@ -254,7 +258,7 @@ int ArachnePlugin::clientDisconnect(
 {
     if (_enableFirewall)
     {
-        if (session->removeFirewalRules() && session->updateEverybodyRules())
+        if (session->removeFirewalRules())
             return OPENVPN_PLUGIN_FUNC_SUCCESS;
         else
             return OPENVPN_PLUGIN_FUNC_ERROR;
@@ -268,10 +272,10 @@ void ArachnePlugin::removeAllRichRules()
         _logger.note() << "Removing all rich rules" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1_Zone firewallZone(connection);
-        for (auto r : firewallZone.getRichRules(_firewallZone))
+        for (auto r : firewallZone.getRichRules(_firewallZoneName))
         {
             _logger.note() << "Removing rich rule " << r << std::flush;
-            firewallZone.removeRichRule(_firewallZone, r);
+            firewallZone.removeRichRule(_firewallZoneName, r);
         }
     }
 }

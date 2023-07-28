@@ -13,11 +13,16 @@
 
 #include <boost/property_tree/ptree.hpp>
 
-#include <list>
+#include <set>
 
 class Url;
 class ArachnePlugin;
 
+enum IcmpRules {
+    ALLOW_ALL,
+    ALLOW_ALL_GRANTED,
+    DENY
+};
 
 class ClientSession
 {
@@ -38,12 +43,15 @@ private:
     int _sessionId;
     std::string _username;
     std::string _password;
-    std::list<std::string> _richRules;
+    std::set<std::string> _richRules;
+    IcmpRules _icmpRules;
 
-    std::string createRichRule(
-        boost::property_tree::ptree::value_type &node,
+    void insertRichRules(
+        const boost::property_tree::ptree::value_type &node,
+        std::set<std::string> &rules,
         const std::string &clientIp = ""
     );
+    bool readJson(const Url &url, boost::property_tree::ptree &json);
 };
 
 #endif

@@ -1,10 +1,10 @@
 #ifndef ARACHNE_PLUGIN_H
 #define ARACHNE_PLUGIN_H
 
-#include <stdio.h>
+#include <cstring>
 #include <ostream>
 #include <sstream>
-#include <cstring>
+#include <stdio.h>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -15,8 +15,9 @@
 #endif
 
 #include "ArachneLogger.h"
-#include "Url.h"
 #include "Config.h"
+#include "FirewallD1.h"
+#include "Url.h"
 
 class ClientSession;
 
@@ -43,12 +44,12 @@ public:
     int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
-    const std::string &getFirewallZone() { return _firewallZone; }
+    const std::string &getFirewallZoneName() { return _firewallZoneName; }
     const Url &getFirewallUrlUser() { return _firewallUrlUser; }
     const Url &getFirewallUrlEverybody() { return _firewallUrlEverybody; }
 
-    void setAutoAddIcmpRules(bool b) { _autoAddIcmpRules = b; }
-    const bool autoAddIcmpRules() { return _autoAddIcmpRules; }
+    FirewallD1_Zone &firewallZone() { return _firewallZone; }
+    FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
 
 private:
     ArachneLogger _logger;
@@ -56,14 +57,17 @@ private:
     int _lastSession;
     Config _config;
 
+    std::unique_ptr<sdbus::IConnection> _dbusConnection;
+    FirewallD1_Zone _firewallZone;
+    FirewallD1_Policy _firewallPolicy;
+
     Url _authUrl;
     Url _firewallUrlUser;
     Url _firewallUrlEverybody;
     std::string _savedIpForward;
     std::string _enableRouting;
     bool _enableFirewall;
-    std::string _firewallZone;
-    bool _autoAddIcmpRules;
+    std::string _firewallZoneName;
 
     const char* getEnv(const char* key, const char *envp[]);
     void readConfigFile(const char*);
