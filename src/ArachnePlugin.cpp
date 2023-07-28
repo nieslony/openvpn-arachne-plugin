@@ -95,17 +95,19 @@ std::string ArachnePlugin::getRoutingStatus()
     }
     ifs >> s;
     ifs.close();
+    _logger.note() << "Got routíng status: \"" << s << "\"" << std::flush;
     return s;
 }
 
-void ArachnePlugin::setRoutingStatus(const std::string&)
+void ArachnePlugin::setRoutingStatus(const std::string& forward)
 {
     std::ofstream ofs;
     ofs.open(FN_IP_FORWATD);
     if (!ofs.is_open()) {
         throw std::runtime_error("Cannot open " + FN_IP_FORWATD + " for reading");
     }
-    ofs << _savedIpForward << std::endl;
+    _logger.note() << "echo " << forward << " > " << FN_IP_FORWATD << std::flush;
+    ofs << forward << std::endl;
     ofs.close();
 }
 
@@ -113,7 +115,7 @@ void ArachnePlugin::setRouting(ClientSession *session)
 {
     if (_enableRouting == "RESTORE_ON_EXIT") {
         _savedIpForward = getRoutingStatus();
-        if (_enableRouting == "1") {
+        if (_savedIpForward == "0") {
             session->getLogger().note() << "Enabling IP forwarding" << std::flush;
             setRoutingStatus("1");
         } else {
