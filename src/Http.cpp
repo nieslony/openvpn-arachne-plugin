@@ -38,6 +38,9 @@ void Http::doHttpInt(const Request &request, Response &response, std::iostream &
 
     if (os != NULL)
         *os << https.rdbuf();
+
+    if (response.status() != 200)
+        throw HttpException(response.status_str());
 }
 
 void Http::doHttp(const Request &request, Response &response, std::ostream *os)
