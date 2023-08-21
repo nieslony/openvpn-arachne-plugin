@@ -59,7 +59,7 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
         BOOST_FOREACH(
             boost::property_tree::ptree::value_type &v, json
         ) {
-            insertRichRules(v, _richRules, clientIp);
+            insertRichRules(v, _forwardingRules, clientIp);
         }
     }
     catch (boost::property_tree::ptree_bad_path &ex) {
@@ -67,7 +67,7 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
         return false;
     }
     _logger.note() << _username << "'s rules:" << std::flush;
-    for (auto r : _richRules)
+    for (auto r : _forwardingRules)
         _logger.note() << r << std::flush;
 
     try {
@@ -80,13 +80,13 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
                 policySettings.at(std::string("rich_rules"))
             );
             std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            rulesS.insert(_richRules.begin(), _richRules.end());
+            rulesS.insert(_forwardingRules.begin(), _forwardingRules.end());
             newPolicySettings["rich_rules"] =
                 std::vector<std::string>(rulesS.begin(), rulesS.end());
         }
         else
             newPolicySettings["rich_rules"] =
-                std::vector<std::string>(_richRules.begin(), _richRules.end());
+                std::vector<std::string>(_forwardingRules.begin(), _forwardingRules.end());
         _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
@@ -111,7 +111,7 @@ bool ClientSession::removeFirewalRules()
                 policySettings.at(std::string("rich_rules"))
             );
             std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            for (auto it=_richRules.begin(); it != _richRules.end(); it++) {
+            for (auto it=_forwardingRules.begin(); it != _forwardingRules.end(); it++) {
                 _logger.note() << "Removing rule " << *it << std::flush;
                 rulesS.erase(*it);
             }

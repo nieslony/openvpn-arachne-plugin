@@ -43,7 +43,7 @@ private:
     int _sessionId;
     std::string _username;
     std::string _password;
-    std::set<std::string> _richRules;
+    std::set<std::string> _forwardingRules;
     IcmpRules _icmpRules;
 
     void insertRichRules(
