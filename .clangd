@@ -2,3 +2,4 @@ CompileFlags:
 	Add:
 		- "-DHAVE_OPENVPN_PLUGIN_H=1"
 		- "-I../../build_openvpn-arachne-plugin/src"
+		- "-std=c++20"
