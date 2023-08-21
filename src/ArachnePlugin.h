@@ -48,6 +48,7 @@ public:
     const std::string &getFirewallZoneName() { return _firewallZoneName; }
     const Url &getFirewallUrlUser() { return _firewallUrlUser; }
     const Url &getFirewallUrlEverybody() { return _firewallUrlEverybody; }
+    const std::set<std::string> &getMyIps() { return _myIps; }
 
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
     FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
@@ -77,6 +78,8 @@ private:
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
     void removeAllRichRules();
+
+    void getLocalIpAddresses();
 };
 
 #endif

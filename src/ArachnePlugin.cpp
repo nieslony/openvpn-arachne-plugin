@@ -40,50 +40,6 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
         _firewallUrlEverybody = _config.get("firewall-url") + "/everybody_rules";
     }
 
-    struct ifaddrs* ptr_ifaddrs = nullptr;
-    auto result = getifaddrs(&ptr_ifaddrs);
-    if (result != 0) {
-        std::stringstream msg;
-        msg << "Cannot get host's IP addresses: " << strerror(errno) << std::endl;
-        throw PluginException(msg.str());
-    }
-
-    _logger.note() << "Getting local IP addresses" << std::flush;
-    for(
-        struct ifaddrs* ptr_entry = ptr_ifaddrs;
-        ptr_entry != nullptr;
-        ptr_entry = ptr_entry->ifa_next
-    ) {
-        if (ptr_entry->ifa_addr == nullptr) {
-            continue;
-        }
-        sa_family_t address_family = ptr_entry->ifa_addr->sa_family;
-
-        if( address_family == AF_INET ) {
-            if( ptr_entry->ifa_addr != nullptr ){
-                char buffer[INET_ADDRSTRLEN] = {0, };
-                inet_ntop(
-                    address_family,
-                    &((struct sockaddr_in*)(ptr_entry->ifa_addr))->sin_addr,
-                    buffer,
-                    INET_ADDRSTRLEN
-                );
-                _myIps.insert(std::string(buffer));
-            }
-        }
-    }
-    freeifaddrs(ptr_ifaddrs);
-    _logger.note()
-        << "Local IP addresses: "
-        << std::accumulate(
-                std::begin(_myIps),
-                std::end(_myIps),
-                std::string{},
-                [](const std::string& a, const std::string &b ) {
-                    return a.empty() ? b : a + ", " + b;
-                }
-            )
-        << std::flush;
 }
 
 ArachnePlugin::~ArachnePlugin()
@@ -272,6 +228,7 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessio
     setRouting(session);
     createFirewallZone(session);
     removeAllRichRules();
+    getLocalIpAddresses();
 
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
@@ -331,4 +288,52 @@ void ArachnePlugin::removeAllRichRules()
             firewallZone.removeRichRule(_firewallZoneName, r);
         }
     }
+}
+
+void ArachnePlugin::getLocalIpAddresses()
+{
+    struct ifaddrs* ptr_ifaddrs = nullptr;
+    auto result = getifaddrs(&ptr_ifaddrs);
+    if (result != 0) {
+        std::stringstream msg;
+        msg << "Cannot get host's IP addresses: " << strerror(errno) << std::endl;
+        throw PluginException(msg.str());
+    }
+
+    _logger.note() << "Getting local IP addresses" << std::flush;
+    for(
+        struct ifaddrs* ptr_entry = ptr_ifaddrs;
+        ptr_entry != nullptr;
+        ptr_entry = ptr_entry->ifa_next
+    ) {
+        if (ptr_entry->ifa_addr == nullptr) {
+            continue;
+        }
+        sa_family_t address_family = ptr_entry->ifa_addr->sa_family;
+
+        if( address_family == AF_INET ) {
+            if( ptr_entry->ifa_addr != nullptr ){
+                char buffer[INET_ADDRSTRLEN] = {0, };
+                inet_ntop(
+                    address_family,
+                    &((struct sockaddr_in*)(ptr_entry->ifa_addr))->sin_addr,
+                    buffer,
+                    INET_ADDRSTRLEN
+                );
+                _myIps.insert(std::string(buffer));
+            }
+        }
+    }
+    freeifaddrs(ptr_ifaddrs);
+    _logger.note()
+        << "Local IP addresses: "
+        << std::accumulate(
+                std::begin(_myIps),
+                std::end(_myIps),
+                std::string{},
+                [](const std::string& a, const std::string &b ) {
+                    return a.empty() ? b : a + ", " + b;
+                }
+            )
+        << std::flush;
 }

@@ -43,12 +43,14 @@ private:
     int _sessionId;
     std::string _username;
     std::string _password;
-    std::set<std::string> _forwardingRules;
+    std::set<std::string> _incomingForwardingRules;
+    std::set<std::string> _incomingRules;
     IcmpRules _icmpRules;
 
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
-        std::set<std::string> &rules,
+        std::set<std::string> &forwardingRules,
+        std::set<std::string> &localRules,
         const std::string &clientIp = ""
     );
     bool readJson(const Url &url, boost::property_tree::ptree &json);
