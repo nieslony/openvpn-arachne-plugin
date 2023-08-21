@@ -5,6 +5,7 @@
 #include <ostream>
 #include <sstream>
 #include <stdio.h>
+#include <set>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -64,6 +65,7 @@ private:
     Url _authUrl;
     Url _firewallUrlUser;
     Url _firewallUrlEverybody;
+    std::set<std::string> _myIps;
     std::string _savedIpForward;
     std::string _enableRouting;
     bool _enableFirewall;
