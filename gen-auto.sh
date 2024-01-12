@@ -23,13 +23,13 @@ if [ "$1" = "clean" ]; then
 fi
 
 echo --- libtoolize ---
-libtoolize --copy
+libtoolize --copy || exit 1
 
 echo --- aclocal ---
-aclocal 
+aclocal || exit 1
 
 echo ---autoconf ---
-autoconf
+autoconf || exit 1
 
 echo --- automake ---
-automake --add-missing --copy
+automake --add-missing --copy || exit 1
