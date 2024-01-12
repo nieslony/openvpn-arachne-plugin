@@ -43,7 +43,7 @@ FirewallD1_Proxy.h:
 	| xmlstarlet ed -L \
 		-d '//node/interface[@name="org.freedesktop.DBus.Introspectable"]' \
 		-d '//node/interface[@name="org.freedesktop.DBus.Properties"]' \
-	| sdbus-c++-xml2cpp --proxy=$@
+	| sdbus-c++-xml2cpp --proxy=$@ || true
 
 FirewallD1_Config_Proxy.h:
 	dbus-send --system \
@@ -56,4 +56,4 @@ FirewallD1_Config_Proxy.h:
 	| xmlstarlet ed -L \
 		-d '//node/interface[@name="org.freedesktop.DBus.Introspectable"]' \
 		-d '//node/interface[@name="org.freedesktop.DBus.Properties"]' \
-	| sdbus-c++-xml2cpp --proxy=$@
+	| sdbus-c++-xml2cpp --proxy=$@ || true
