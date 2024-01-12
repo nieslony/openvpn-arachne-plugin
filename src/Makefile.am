@@ -26,34 +26,5 @@ EXTRA_DIST = ${DBUS_GENERATED} \
         Http.h \
         Url.h
 
-clean-local:
-	rm -f ${DBUS_GENERATED}
-
 ArachnePlugin.cpp: ${DBUS_GENERATED}
 main.cpp: ${DBUS_GENERATED}
-
-FirewallD1_Proxy.h:
-	dbus-send --system \
-		--type=method_call \
-		--dest=org.fedoraproject.FirewallD1 \
-		--print-reply \
-		/org/fedoraproject/FirewallD1 \
-		org.freedesktop.DBus.Introspectable.Introspect \
-	| sed -e '/^method return.*$$/d' -e 's/^\s* string\s*"//' -e 's/"$$//'\
-	| xmlstarlet ed -L \
-		-d '//node/interface[@name="org.freedesktop.DBus.Introspectable"]' \
-		-d '//node/interface[@name="org.freedesktop.DBus.Properties"]' \
-	| sdbus-c++-xml2cpp --proxy=$@
-
-FirewallD1_Config_Proxy.h:
-	dbus-send --system \
-		--type=method_call \
-		--dest=org.fedoraproject.FirewallD1 \
-		--print-reply \
-		/org/fedoraproject/FirewallD1/config \
-		org.freedesktop.DBus.Introspectable.Introspect \
-	| sed -e '/^method return.*$$/d' -e 's/^\s* string\s*"//' -e 's/"$$//' \
-	| xmlstarlet ed -L \
-		-d '//node/interface[@name="org.freedesktop.DBus.Introspectable"]' \
-		-d '//node/interface[@name="org.freedesktop.DBus.Properties"]' \
-	| sdbus-c++-xml2cpp --proxy=$@
