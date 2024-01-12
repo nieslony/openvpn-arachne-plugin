@@ -8,6 +8,6 @@ srpm:
 	( cd $(mkdist_dir) ; ../../configure ; make dist )
 	rpmbuild -bs \
 		--define "_sourcedir $(mkdist_dir)" \
-		--define "_srpmdir $(outdir)" \
+		--define "_srcrpmdir $(outdir)" \
 		$(mkdist_dir)/openvpn-plugin-arachne.spec
 	cp -v $(mkdist_dir)/openvpn-plugin-arachne.spec $(spec)
