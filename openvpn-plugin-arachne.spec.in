@@ -7,7 +7,7 @@ License:    GPL-2.0+
 URL:        http://www.nieslony.site/arachne
 Source0:    %{name}-%{version}.tar.gz
 
-BuildRequires:  gcc-c++, xmlstarlet
+BuildRequires:  gcc-c++
 BuildRequires:  openvpn-devel, boost-devel, openssl-devel, sdbus-cpp-devel
 BuildRequires:  selinux-policy-devel
 Requires:       boost

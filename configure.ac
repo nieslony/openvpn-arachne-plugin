@@ -27,9 +27,6 @@ PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.0],,
     [http://www.kistler.com/])
 )
 
-AC_CHECK_TOOL(XMLSTARLET, xmlstarlet)
-AS_IF([test x"$XMLSTARLET" = x""], [AC_MSG_ERROR([Please install xmlstarlet $XMLSTARLET])])
-
 AC_SUBST([plugindir])
 
 AC_CONFIG_FILES([
