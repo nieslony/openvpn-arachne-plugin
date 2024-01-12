@@ -2,7 +2,7 @@ current_dir := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 mkdist_dir := $(current_dir)/mk-dist
 
 srpm:
-	dnf -y install autoconf automake
+	dnf -y install autoconf automake autoconf-archive
 	( cd $(current_dir)/.. ; ./gen-auto.sh )
 	mkdir -pv $(mkdist_dir)
 	( cd $(mkdist_dir) ; ../../configure ; make dist )
