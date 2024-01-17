@@ -13,6 +13,15 @@
 
 #include <boost/property_tree/ptree.hpp>
 
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/version.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/error.hpp>
+#include <boost/asio/ssl/stream.hpp>
+
 #include <set>
 
 class Url;
@@ -47,6 +56,7 @@ private:
     std::set<std::string> _incomingRules;
     IcmpRules _icmpRules;
 
+    std::string doHttp(const Url &url, const std::string &username, const std::string &password);
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
         std::set<std::string> &forwardingRules,

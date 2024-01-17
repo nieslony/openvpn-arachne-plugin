@@ -1,11 +1,35 @@
+#include "ArachnePlugin.h"
 #include "ClientSession.h"
 #include "Http.h"
-#include "ArachnePlugin.h"
 
-#include <boost/property_tree/json_parser.hpp>
+#include <boost/archive/iterators/base64_from_binary.hpp>
+#include <boost/archive/iterators/base64_from_binary.hpp>
+#include <boost/archive/iterators/ostream_iterator.hpp>
+#include <boost/archive/iterators/transform_width.hpp>
+#include <boost/asio.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl.hpp>
+#include <boost/asio/ssl/error.hpp>
+#include <boost/asio/ssl/stream.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/http/message.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/version.hpp>
 #include <boost/foreach.hpp>
-#include <sstream>
+#include <boost/property_tree/json_parser.hpp>
+
+#include <iostream>
 #include <set>
+#include <sstream>
+#include <string>
+
+namespace beast = boost::beast;     // from <boost/beast.hpp>
+namespace http = beast::http;       // from <boost/beast/http.hpp>
+namespace net = boost::asio;        // from <boost/asio.hpp>
+namespace ssl = net::ssl;
+using tcp = net::ip::tcp;           // from <boost/asio/ip/tcp.hpp>
 
 ClientSession::ClientSession(ArachnePlugin &plugin, plugin_vlog_t logFunc, int sessionId)
     : _plugin(plugin), _logger(logFunc, sessionId), _sessionId(sessionId)
@@ -18,34 +42,45 @@ ClientSession::~ClientSession()
     _logger.note() << "Cleanup session" << std::flush;
 }
 
+
+std::string makeBasicAuth(const std::string &username, const std::string &password)
+{
+    using namespace boost::archive::iterators;
+    std::string authStr = username + ":" + password;
+    std::stringstream os;
+    using IT =
+        base64_from_binary<    // convert binary values to base64 characters
+            transform_width<   // retrieve 6 bit integers from a sequence of 8 bit bytes
+                std::string::const_iterator,
+                6,
+                8
+            >
+        >; // compose all the above operations in to a new iterator
+    std::copy(
+        IT(std::begin(authStr)),
+        IT(std::end(authStr)),
+        std::ostream_iterator<char>(os)
+    );
+    os << std::string("====").substr(0, (4 - os.str().length() % 4) % 4);
+    return "Basic " + os.str();
+}
+
 bool ClientSession::authUser(const Url &url, const std::string &username, const std::string &password)
 {
-    _logger.note() << "Authenticating user " << username << std::flush;
-
-    http::Request request(http::GET, url);
-    request.basicAuth(username, password);
-    http::Response response;
-    http::Http httpClient;
-    _logger.note() << "Connecting to " << url.str() << std::flush;
-    try {
-        httpClient.doHttp(request, response);
-    }
-    catch (http::HttpException &ex)
+    try
     {
-        _logger.error() << ex.what() << std::endl;
-        return false;
-    }
-    _logger.note() << "Got " << response.status() << "(" << response.status_str() << ")" << std::flush;
-    if (response.status() == 200) {
-        _logger.note() << "Authenticating successfull" << std::flush;
+        doHttp(url, username, password);
         _username = username;
         _password = password;
-        return true;
     }
-    else {
-        _logger.note() << "Authenticating failed" << std::flush;
+    catch (HttpException &ex)
+    {
+        _logger.error() << ex.what() << std::flush;
+        _logger.error() << "Authentication failed" << std::flush;
         return false;
     }
+
+    return true;
 }
 
 bool ClientSession::setFirewallRules(const std::string &clientIp)
@@ -304,27 +339,75 @@ void ClientSession::insertRichRules(
 bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
 {
     _logger.note() << "Getting rules from " << url.str() << std::flush;
-    http::Request request(http::GET, url);
-    request.basicAuth(_username, _password);
-    http::Response response;
-    http::Http httpClient;
-    std::stringstream body;
+    std::string body;
 
     try {
-        httpClient.doHttp(request, response, &body);
+        body = doHttp(url, _username, _password);
     }
-    catch (http::HttpException &ex) {
+    catch (HttpException &ex) {
         _logger.error() << "Error connecting to " << url.str() << ": " << ex.what() << std::endl;
         return false;
     }
 
     try {
-        boost::property_tree::read_json(body, json);
+        std::istringstream iss(body);
+        boost::property_tree::read_json(iss, json);
     }
     catch (const std::exception &ex) {
         _logger.error() << "Cannot parse json. " << ex.what() << std::endl;
         return false;
     }
-    _logger.note() << "Got " << body.str() << std::endl;
+    _logger.note() << "Got " << body << std::endl;
+
     return true;
+}
+
+std::string ClientSession::doHttp(const Url &url, const std::string &username, const std::string &password)
+{
+    net::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto const results = resolver.resolve(url.host(), std::to_string(url.port()));
+    beast::flat_buffer buffer;
+
+    http::request<http::string_body> req{http::verb::get, url.path(), 11};
+    req.set(http::field::host, url.host());
+    req.set(http::field::authorization, makeBasicAuth(username, password));
+    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    http::response<http::string_body> res;
+
+    if (url.protocol() == "https") {
+        ssl::context ctx(ssl::context::tlsv12_client);
+        ctx.set_default_verify_paths();
+        ctx.set_verify_mode(ssl::verify_peer);
+        ctx.set_verify_callback(
+            boost::asio::ssl::rfc2818_verification(url.host())
+        );
+        beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
+        if(! SSL_set_tlsext_host_name(stream.native_handle(), url.host().c_str()))
+        {
+            beast::error_code ec{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
+            throw HttpException(ec.to_string());
+        }
+        beast::get_lowest_layer(stream).connect(results);
+        stream.handshake(ssl::stream_base::client);
+
+        http::write(stream, req);
+        http::read(stream, buffer, res);
+    }
+    else
+    {
+        beast::tcp_stream stream(ioc);
+        stream.connect(results);
+
+        http::write(stream, req);
+        http::read(stream, buffer, res);
+    }
+
+    if (res.result_int() >= 400) {
+        std::stringstream msg;
+        msg << "Cannot connect to " << url.str() << ": " << res.result() << "(" << res.result_int() << ")";
+        throw HttpException(msg.str());
+    }
+
+    return res.body();
 }

@@ -10,16 +10,13 @@ arachne_la_SOURCES = \
         ClientSession.cpp \
         Config.cpp \
         FirewallD1.cpp \
-        Http.cpp \
-        Response.cpp \
-        Request.cpp \
         Url.cpp
 
 DBUS_GENERATED = FirewallD1_Proxy.h FirewallD1_Config_Proxy.h
 
 EXTRA_DIST = ${DBUS_GENERATED} \
-        ArachnePlugin.h \
         ArachneLogger.h \
+        ArachnePlugin.h \
         ClientSession.h \
         Config.h \
         FirewallD1.h \

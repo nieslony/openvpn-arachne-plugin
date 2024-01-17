@@ -4,7 +4,6 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <cctype>
 #include <cerrno>
 #include <fstream>
 #include <sstream>
