@@ -386,7 +386,7 @@ std::string ClientSession::doHttp(const Url &url, const std::string &username, c
         if(! SSL_set_tlsext_host_name(stream.native_handle(), url.host().c_str()))
         {
             beast::error_code ec{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
-            throw HttpException(ec.to_string());
+            throw HttpException(ec.message());
         }
         beast::get_lowest_layer(stream).connect(results);
         stream.handshake(ssl::stream_base::client);
