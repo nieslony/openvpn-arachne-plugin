@@ -28,6 +28,16 @@ const std::string &Config::get(const std::string& key)
     }
 }
 
+const std::string &Config::get(const std::string &key, std::string &default_value)
+{
+    try {
+        return _entries.at(key);
+    }
+    catch (std::out_of_range &ex) {
+        return default_value;
+    }
+}
+
 bool Config::getBool(const std::string& key)
 {
     std::string value = get(key);
@@ -36,6 +46,16 @@ bool Config::getBool(const std::string& key)
     if (value == "false" || value == "no" || value == "off")
         return false;
     throw ConfigException("key " + key + " has invalid bool value");
+}
+
+bool Config::getBool(const std::string &key, bool default_value)
+{
+    std::string value = get(key);
+    if (value == "true" || value == "yes" || value == "on")
+        return true;
+    if (value == "false" || value == "no" || value == "off")
+        return false;
+    return default_value;
 }
 
 void Config::load(std::istream &in)

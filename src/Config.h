@@ -20,8 +20,12 @@ public:
     Config(){}
 
     void load(std::istream&);
-    const std::string &get(const std::string&);
-    bool getBool(const std::string&);
+
+    const std::string &get(const std::string &key);
+    const std::string &get(const std::string &key, std::string &default_value);
+
+    bool getBool(const std::string &key);
+    bool getBool(const std::string &key, bool default_value);
 
 private:
     std::map<std::string, std::string> _entries;
