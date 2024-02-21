@@ -2,6 +2,7 @@
 #define CLIENT_SESSION_H
 
 #include "ArachneLogger.h"
+#include "Config.h"
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -39,10 +40,18 @@ public:
     ClientSession(ArachnePlugin &plugin, plugin_vlog_t logFunc, int sessionid);
     ~ClientSession();
 
+    void readConfigFile(const std::string &filename);
+
+    void setCommonName(const std::string &commonName) { _commonName = commonName; }
+    const std::string &commonName() const { return _commonName; }
+    void setClientIp(const std::string &ip) { _ip = ip; }
+    const std::string &clientIp() const { return _ip; }
+
     bool authUser(const Url &url, const std::string &username, const std::string &password);
     bool setFirewallRules(const std::string &clientIp);
     bool removeFirewalRules();
     bool updateEverybodyRules();
+    bool verifyClientIp();
 
     ArachneLogger &getLogger() { return _logger; }
 
@@ -55,6 +64,10 @@ private:
     std::set<std::string> _incomingForwardingRules;
     std::set<std::string> _incomingRules;
     IcmpRules _icmpRules;
+    std::string _commonName;
+    bool _verifyIpDns;
+    std::vector<std::string> _ipWhitelist;
+    std::string _ip;;
 
     std::string doHttp(const Url &url, const std::string &username, const std::string &password);
     void insertRichRules(

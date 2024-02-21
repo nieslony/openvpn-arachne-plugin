@@ -1,7 +1,9 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
+#include "Config.h"
 #include "FirewallD1.h"
 
+#include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <cerrno>
@@ -30,15 +32,15 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger.note() << "Reading configuration from " << configFile << std::flush;
 
     readConfigFile(configFile);
-    _authUrl = _config.get("auth-url");
+    _authUrl = _config.get("auth-url", "");
     _enableRouting = _config.get("enable-routing");
-    _enableFirewall = _config.getBool("enable-firewall");
+    _enableFirewall = _config.getBool("enable-firewall", false);
     if (_enableFirewall) {
         _firewallZoneName = _config.get("firewall-zone");
         _firewallUrlUser = _config.get("firewall-url") + "/user_rules";
         _firewallUrlEverybody = _config.get("firewall-url") + "/everybody_rules";
     }
-
+    _clientConfig = _config.get("client-config", "");
 }
 
 ArachnePlugin::~ArachnePlugin()
@@ -48,6 +50,17 @@ ArachnePlugin::~ArachnePlugin()
 ClientSession *ArachnePlugin::createClientSession()
 {
     return new ClientSession(*this, _logFunc, ++_lastSession);
+}
+
+std::ostream &ArachnePlugin::dumpEnv(std::ostream &os, const char *envp[])
+{
+    if (envp) {
+        for (int i = 0; envp[i]; i++) {
+            os << envp[i] << " ";
+        }
+    }
+
+    return os;
 }
 
 const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
@@ -65,7 +78,9 @@ const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
         }
     }
 
-    return "";
+    std::stringstream msg;
+    msg << "Enviroment variable " << key << " not defined";
+    throw PluginException(msg.str());
 }
 
 int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
@@ -247,13 +262,32 @@ int ArachnePlugin::clientConnect(
     ClientSession*session
 ) noexcept
 {
-    std::string clientIp(getEnv("ifconfig_pool_remote_ip", envp));
+    //dumpEnv(session->getLogger().note(), envp) << std::flush;
+    _logger.note() << "Client connected" << std::flush;
+    if (!_clientConfig.empty()) {
+        try {
+            session->setCommonName(getEnv("common_name", envp));
+            session->setClientIp(getEnv("untrusted_ip", envp));
+        }
+        catch (PluginException &ex) {
+            _logger.error() << ex.what() << std::flush;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+        try {
+            session->readConfigFile(_clientConfig);
+            if (!session->verifyClientIp())
+                return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+        catch (ConfigException &ex) {
+            _logger.error() << ex.what() << std::endl;
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+    }
 
     if (_enableFirewall)
     {
-        if (session->updateEverybodyRules() && session->setFirewallRules(clientIp))
-            return OPENVPN_PLUGIN_FUNC_SUCCESS;
-        else
+        std::string clientIp(getEnv("ifconfig_pool_remote_ip", envp));
+        if (!session->updateEverybodyRules() || !session->setFirewallRules(clientIp))
             return OPENVPN_PLUGIN_FUNC_ERROR;
     }
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
@@ -295,7 +329,7 @@ void ArachnePlugin::getLocalIpAddresses()
     auto result = getifaddrs(&ptr_ifaddrs);
     if (result != 0) {
         std::stringstream msg;
-        msg << "Cannot get host's IP addresses: " << strerror(errno) << std::endl;
+        msg << "Cannot get host's IP addresses: " << strerror(errno) << std::flush;
         throw PluginException(msg.str());
     }
 

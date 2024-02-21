@@ -11,13 +11,13 @@ private:
     std::string _path;
     unsigned _port;
     std::map<std::string, std::string> _query;
-
+    bool _empty;
     bool _autoPort;
 
     void init(const std::string&);
 
 public:
-    Url() {}
+    Url() : _empty(true) {}
     Url(const std::string& url);
     Url &operator=(const std::string&);
 
@@ -33,6 +33,8 @@ public:
     void path(const std::string &path) { _path = path; }
     void port(unsigned p) { _port = p; }
     void addQuery(const std::string &key, const std::string &value);
+
+    bool empty() const { return _empty; }
 };
 
 #endif

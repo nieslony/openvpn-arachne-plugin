@@ -22,7 +22,7 @@ public:
     void load(std::istream&);
 
     const std::string &get(const std::string &key);
-    const std::string &get(const std::string &key, std::string &default_value);
+    const std::string &get(const std::string &key, const std::string &default_value);
 
     bool getBool(const std::string &key);
     bool getBool(const std::string &key, bool default_value);

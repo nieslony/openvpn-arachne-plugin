@@ -18,7 +18,7 @@ openvpn_plugin_open_v3 (const int version,
         ArachnePlugin *context = new ArachnePlugin(arguments);
 
         retptr->type_mask =
-            OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) |
+            (context->userPasswdAuthEnabled() ? OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY) : 0) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_CONNECT_V2) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_CLIENT_DISCONNECT) |
             OPENVPN_PLUGIN_MASK(OPENVPN_PLUGIN_UP) |

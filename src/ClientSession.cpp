@@ -1,8 +1,12 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
+#include "Config.h"
 #include "Http.h"
 
-#include <boost/archive/iterators/base64_from_binary.hpp>
+#include <boost/asio.hpp>
+#include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string_regex.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/ostream_iterator.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
@@ -19,6 +23,7 @@
 #include <boost/beast/version.hpp>
 #include <boost/foreach.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/regex.hpp>
 
 #include <iostream>
 #include <set>
@@ -42,6 +47,81 @@ ClientSession::~ClientSession()
     _logger.note() << "Cleanup session" << std::flush;
 }
 
+void ClientSession::readConfigFile(const std::string &filename)
+{
+    Config config;
+    std::string myFilename = boost::replace_all_copy(filename, "%cn", _commonName);
+    _logger.note() << "Reading client configuration " <<myFilename << std::flush;
+    try {
+        std::ifstream ifs;
+        ifs.open (myFilename, std::ifstream::in);
+        if (!ifs.is_open()) {
+            throw std::runtime_error("Cannot open config file");
+        }
+        config.load(ifs);
+        ifs.close();
+        std::string siteVerification = config.get("site-verification", "");
+        if (siteVerification == "DNS")
+            _verifyIpDns = true;
+        else
+            _verifyIpDns = false;
+        _logger.note() << "Client verification type: " << siteVerification;
+        if (siteVerification == "WHITELIST") {
+            std::string ipWhiteList = config.get("ip-wihtelist");
+            boost::algorithm::split_regex(_ipWhitelist, ipWhiteList, boost::regex(", *"));
+            _logger.note() << " IP whitelist: " << ipWhiteList;
+        }
+        _logger.note() << std::flush;
+    }
+    catch (std::exception &ex) {
+        std::stringstream str;
+        str << "Error reading " << myFilename << ": " << ex.what();
+        throw ConfigException(str.str());
+    }
+}
+
+bool ClientSession::verifyClientIp()
+{
+    if (_verifyIpDns)
+    {
+        boost::asio::ip::address_v4 ip = boost::asio::ip::address_v4::from_string(_ip);
+        boost::asio::io_service io_service;
+        boost::asio::ip::tcp::resolver resolver(io_service);
+        boost::asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(_commonName, "");
+//        for (auto it = endpoints.cbegin(); it != endpoints.cend(); it++)
+        for (auto &it : endpoints)
+        {
+            boost::asio::ip::tcp::endpoint endpoint = it;
+            if (endpoint.address() == ip)
+            {
+                _logger.note()
+                    << "IP verification succeeded. IP " << _ip
+                    << " matches DNS entry " <<_commonName
+                    << std::flush;
+                return true;
+            }
+        }
+        _logger.error() << "IP verification failed. IP " << _ip << " does not match DNS entry" << std::flush;
+        return false;
+    }
+
+    if (!_ipWhitelist.empty())
+    {
+        for (auto &it :_ipWhitelist)
+        {
+            if (it == _ip)
+            {
+                _logger.note() << "IP verification succeeded. IP " << _ip << " matches whitelist" << std::flush;
+                return true;
+            }
+        }
+        _logger.error() << "IP verification failed. IP " << _ip << " does not match whitelist" << std::flush;
+        return false;
+    }
+
+    _logger.note() << "No client verification enabled" << std::flush;
+    return true;
+}
 
 std::string makeBasicAuth(const std::string &username, const std::string &password)
 {
@@ -345,7 +425,7 @@ bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
         body = doHttp(url, _username, _password);
     }
     catch (HttpException &ex) {
-        _logger.error() << "Error connecting to " << url.str() << ": " << ex.what() << std::endl;
+        _logger.error() << "Error connecting to " << url.str() << ": " << ex.what() << std::flush;;
         return false;
     }
 
@@ -354,7 +434,7 @@ bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
         boost::property_tree::read_json(iss, json);
     }
     catch (const std::exception &ex) {
-        _logger.error() << "Cannot parse json. " << ex.what() << std::endl;
+        _logger.error() << "Cannot parse json. " << ex.what() << std::flush;;
         return false;
     }
     _logger.note() << "Got " << body << std::endl;

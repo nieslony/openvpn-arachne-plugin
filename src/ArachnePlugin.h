@@ -53,6 +53,9 @@ public:
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
     FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
 
+    const std::string &clientConfig() { return _clientConfig; }
+    bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
@@ -71,8 +74,10 @@ private:
     std::string _enableRouting;
     bool _enableFirewall;
     std::string _firewallZoneName;
+    std::string _clientConfig;
 
     const char* getEnv(const char* key, const char *envp[]);
+    std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);
     void readConfigFile(const char*);
 
     std::string getRoutingStatus();

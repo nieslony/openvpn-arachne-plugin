@@ -11,6 +11,11 @@ Url::Url(const std::string& url)
 
 void Url::init(const std::string& url)
 {
+    if (url.empty()) {
+        _empty = true;
+        return;
+    }
+
     boost::smatch m;
 
     std::string proto;
@@ -48,6 +53,8 @@ void Url::init(const std::string& url)
         buf << "Error parsing url " << url << ": invalid port number: " << port;
         throw PluginException(buf.str());
     }
+
+    _empty = false;
 }
 
 Url &Url::operator=(const std::string& url)
