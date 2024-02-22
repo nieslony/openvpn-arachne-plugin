@@ -31,3 +31,6 @@ cat configure.ac | awk -v version="$VERSION" '
 ' > $TEMP_FILE
 
 mv -v $TEMP_FILE configure.ac
+
+git commit -m "Bump version $VERSION" configure.ac
+git tag "v$VERSION"
