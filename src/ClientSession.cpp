@@ -360,7 +360,6 @@ void ClientSession::insertRichRules(
 {
     boost::optional<std::string> value;
     std::stringstream rule;
-    bool isLocal = false;
 
     std::string destination;
     value = node.second.get_optional<std::string>("destinationAddress");

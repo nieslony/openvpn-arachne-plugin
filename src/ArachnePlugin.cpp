@@ -18,10 +18,10 @@ static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger(in_args->callbacks->plugin_vlog),
+    _lastSession(0),
     _dbusConnection(sdbus::createSystemBusConnection()),
     _firewallZone(_dbusConnection),
-    _firewallPolicy(_dbusConnection),
-    _lastSession(0)
+    _firewallPolicy(_dbusConnection)
 {
     _logger.note() << "Initializing" << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;

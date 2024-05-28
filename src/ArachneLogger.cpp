@@ -2,8 +2,10 @@
 
 #include <sstream>
 
-ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId)
-    : _logFunc(log_func), _sessionId(sessionId), _level(PLOG_NOTE)
+ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId) :
+    _logFunc(log_func),
+    _sessionId(sessionId),
+    _level(PLOG_NOTE)
 {
 }
 
@@ -39,7 +41,8 @@ void ArachneLogBuf::log(const char* msg, ...)
     va_end(argptr);
 }
 
-ArachneLogger::ArachneLogger(plugin_vlog_t logFunc, int sessionId)
-    : _buf(logFunc, sessionId), std::ostream(&_buf)
+ArachneLogger::ArachneLogger(plugin_vlog_t logFunc, int sessionId) :
+    std::ostream(&_buf),
+    _buf(logFunc, sessionId)
 {
 }
