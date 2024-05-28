@@ -1,3 +1,5 @@
+%define selinuxtype targeted
+
 Name:       @PACKAGE_NAME@
 Version:    @PACKAGE_VERSION@
 Release:    1
@@ -9,7 +11,7 @@ Source0:    %{name}-%{version}.tar.gz
 
 BuildRequires:  gcc-c++
 BuildRequires:  openvpn-devel, boost-devel, openssl-devel, sdbus-cpp-devel
-BuildRequires:  selinux-policy-devel
+BuildRequires:  selinux-policy-devel, selinux-policy
 Requires:       boost
 
 %description
@@ -23,17 +25,34 @@ openVPN plugin needed by arachne
 %build
 %configure
 %{__make} %{?_smp_mflags}
-make -f /usr/share/selinux/devel/Makefile openvpn-plugin-arachne.pp
+make -f /usr/share/selinux/devel/Makefile %{name}.pp
 
 %install
 %make_install
-mkdir -pv %{buildroot}%{_datadir}/selinux/packages
-install -m 0644 openvpn-plugin-arachne.pp %{buildroot}%{_datadir}/selinux/packages
+mkdir -pv %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
+install -m 0644 %{name}.pp %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
 
 %files
 %license LICENSE
 %{_libdir}/openvpn/plugins
-%{_datadir}/selinux/packages
+%{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp
+
+%pre
+if %{_sbindir}/selinuxenabled 2>/dev/null; then
+    %selinux_relabel_pre -s %{selinuxtype}
+fi
+
+%post
+if [ -x %{_sbindir}/selinuxenabled ]; then
+    %selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
+    %selinux_relabel_post -s %{selinuxtype}
+fi
+
+%postun
+if [ -x %{_sbindir}/selinuxenabled ]; then
+    %selinux_modules_uninstall -s %{selinuxtype} %{name}
+    %selinux_relabel_post -s %{selinuxtype}
+fi
 
 %changelog
 * Sun Nov 19 2017 Claas Nieslony <claas@nieslony.at> 0.1.0
