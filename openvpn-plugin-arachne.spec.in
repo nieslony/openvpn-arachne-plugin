@@ -44,7 +44,7 @@ fi
 
 %post
 if [ -x %{_sbindir}/selinuxenabled ]; then
-    %selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
+    %selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp
     %selinux_relabel_post -s %{selinuxtype}
 fi
 
