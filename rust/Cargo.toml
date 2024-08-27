@@ -1,0 +1,18 @@
+[package]
+name = "openvpn-plugin-arachne"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+derive-try-from-primitive = "*"
+va_list = "*"
+toml = "*"
+serde = { version = "*", features = ["derive"] }
+reqwest = { version = "*", features = ["json", "blocking"] }
+zbus = { version = "*", default-features = false, features = ["tokio"] }
+json = "*"
+
+[lib]
+crate-type = ["cdylib"]
+
+
