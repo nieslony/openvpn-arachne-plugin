@@ -13,3 +13,4 @@ m4/
 missing
 src/Makefile.in
 **/*~
+**/*.kate-swp
