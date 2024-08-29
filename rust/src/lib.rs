@@ -103,7 +103,7 @@ pub unsafe extern "C" fn openvpn_plugin_func_v3(
 
     let mut env: HashMap::<String, String> = HashMap::<String, String>::new();
     env_to_map((*args).envp, &mut env);
-    client.note(format!("env for func {:?}: {:?}", event_type, &env).as_str());
+    client.debug(format!("env for func {:?}: {:?}", event_type, &env).as_str());
 
     match event_type {
         EventType::Up => on_plugin_up(handle, client, &env),
