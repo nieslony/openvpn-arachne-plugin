@@ -73,10 +73,6 @@ impl Handle {
         self.next_session_id
     }
 
-    pub fn argv(&self) -> &LinkedList::<String> {
-        &self.arguments
-    }
-
     pub fn env(&self) -> &HashMap<String,String> {
         &self.environment
     }
@@ -135,11 +131,15 @@ impl VpnClient {
         }
     }
 
+    pub fn debug(&self, msg: &str) {
+        self.log(OpenvpnPluginLogFlags::PlogDebug, format!("DEBUG {msg}").as_str());
+    }
+
     pub fn note(&self, msg: &str) {
-        self.log(OpenvpnPluginLogFlags::PlogNote, msg);
+        self.log(OpenvpnPluginLogFlags::PlogNote, format!("NOTE {msg}").as_str());
     }
 
     pub fn error(&self, msg: &str) {
-        self.log(OpenvpnPluginLogFlags::PlogErr, msg);
+        self.log(OpenvpnPluginLogFlags::PlogErr, format!("ERROR {msg}").as_str());
     }
 }
