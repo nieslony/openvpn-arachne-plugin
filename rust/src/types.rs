@@ -1,9 +1,9 @@
-use std::os::raw::{c_char, c_int, c_uint, c_void};
-use std::collections::{HashMap,LinkedList};
-use std::ptr;
-use std::ffi::CStr;
-use va_list::VaList;
 use derive_try_from_primitive::TryFromPrimitive;
+use std::collections::{HashMap, LinkedList};
+use std::ffi::CStr;
+use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::ptr;
+use va_list::VaList;
 
 pub const OPENVPN_PLUGIN_FUNC_SUCCESS: c_int = 0;
 pub const OPENVPN_PLUGIN_FUNC_ERROR: c_int = 1;
@@ -21,44 +21,36 @@ pub enum OvpnSslapi {
 
 #[repr(C)]
 pub enum OpenvpnPluginLogFlags {
-    PlogErr    = (1 << 0),/* Error condition message */
-    PlogWarn   = (1 << 1),/* General warning message */
-    PlogNote   = (1 << 2),/* Informational message */
-    PlogDebug  = (1 << 3),/* Debug message, displayed if verb >= 7 */
+    PlogErr = (1 << 0),   /* Error condition message */
+    PlogWarn = (1 << 1),  /* General warning message */
+    PlogNote = (1 << 2),  /* Informational message */
+    PlogDebug = (1 << 3), /* Debug message, displayed if verb >= 7 */
 
-    PlogErrno  = (1 << 8),/* Add error description to message */
+    PlogErrno = (1 << 8),  /* Add error description to message */
     PlogNoMute = (1 << 9), /* Mute setting does not apply for message */
 }
 
 pub type PluginLog = unsafe extern "C" fn(
     flags: OpenvpnPluginLogFlags,
     plugin_name: *const c_char,
-    format: *const c_char, ...
+    format: *const c_char,
+    ...
 );
 
 pub type PluginVLog = unsafe extern "C" fn(
     flags: OpenvpnPluginLogFlags,
     plugin_name: *const c_char,
     format: *const c_char,
-    va_list: VaList
+    va_list: VaList,
 );
 
-pub type PluginSecureMemzero = unsafe extern "C" fn(
-    data: *mut c_void,
-    len: isize
-);
+pub type PluginSecureMemzero = unsafe extern "C" fn(data: *mut c_void, len: isize);
 
-pub type PluginBase64Encode = unsafe extern "C" fn(
-    date: *const c_void,
-    size: isize,
-    str: *mut *mut c_char
-);
+pub type PluginBase64Encode =
+    unsafe extern "C" fn(date: *const c_void, size: isize, str: *mut *mut c_char);
 
-pub type PluginBase64Decode = unsafe extern "C" fn(
-    str: *const c_char,
-    data: *const c_void,
-    len: isize
-);
+pub type PluginBase64Decode =
+    unsafe extern "C" fn(str: *const c_char, data: *const c_void, len: isize);
 
 #[repr(C)]
 pub struct Callbacks {
@@ -66,7 +58,7 @@ pub struct Callbacks {
     plugin_vlog: PluginVLog,
     plugin_secure_memzero: PluginSecureMemzero,
     plugin_base64_encode: PluginBase64Encode,
-    plugin_base64_decode: PluginBase64Decode
+    plugin_base64_decode: PluginBase64Decode,
 }
 
 #[repr(C)]
@@ -136,7 +128,10 @@ pub fn events_to_bitmask(events: &[EventType]) -> c_int {
     bitmask
 }
 
-pub fn argv_to_list(argv: *const *const c_char, list: &mut LinkedList<String>) {
+pub fn argv_to_list(
+    argv: *const *const c_char,
+    list: &mut LinkedList<String>
+) {
     let mut next_arg = argv;
     unsafe {
         while (*next_arg) != ptr::null() {
@@ -149,7 +144,10 @@ pub fn argv_to_list(argv: *const *const c_char, list: &mut LinkedList<String>) {
     }
 }
 
-pub fn env_to_map(argv: *const *const c_char, map: &mut HashMap<String,String>) {
+pub fn env_to_map(
+    argv: *const *const c_char,
+    map: &mut HashMap<String, String>
+) {
     let mut next_arg = argv;
     unsafe {
         while (*next_arg) != ptr::null() {

@@ -1,23 +1,22 @@
 // https://docs.rs/openvpn-plugin/latest/openvpn_plugin/
 // https://github.com/mullvad/openvpn-plugin-rs/blob/main/src/lib.rs
 
-mod types;
-mod handle;
 mod firewall;
+mod handle;
+mod types;
 
-
-use types::*;
-use handle::*;
 use firewall::*;
-use std::fs::File;
+use handle::*;
+use std::collections::HashMap;
 use std::fs::read_to_string;
+use std::fs::File;
 use std::io::Write;
 use std::os::raw::{c_int, c_void};
-use std::collections::HashMap;
+use types::*;
 use zbus::blocking::Connection as DbusConnection;
 
-use reqwest::StatusCode;
 use reqwest::blocking::Client as HttpClient;
+use reqwest::StatusCode;
 
 const FN_IP_FORWATD: &str = "/proc/sys/net/ipv4/ip_forward";
 
@@ -31,13 +30,13 @@ pub unsafe extern "C" fn openvpn_plugin_open_v3(
     handle.note("Plugin Open");
     handle.note(format!("environment: {:?}", handle.env()).as_str());
     if !handle.read_config() {
-        return OPENVPN_PLUGIN_FUNC_ERROR
+        return OPENVPN_PLUGIN_FUNC_ERROR;
     }
     match DbusConnection::system() {
         Ok(c) => handle.dbus_connection.insert(c),
         Err(msg) => {
             handle.error(format!("Cannot connect to system bus: {}", msg).as_str());
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     };
 
@@ -45,7 +44,7 @@ pub unsafe extern "C" fn openvpn_plugin_open_v3(
         EventType::Up,
         EventType::Down,
         EventType::AuthUserPassVerify,
-        EventType::ClientConnect
+        EventType::ClientConnect,
     ];
 
     (*retptr).type_mask = types::events_to_bitmask(&events);
@@ -55,22 +54,20 @@ pub unsafe extern "C" fn openvpn_plugin_open_v3(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn openvpn_plugin_close_v1(
-    handle_ptr: *mut c_void
-) {
-    let handle: &mut Handle = unsafe { &mut *(handle_ptr as *mut Handle)};
+pub unsafe extern "C" fn openvpn_plugin_close_v1(handle_ptr: *mut c_void) {
+    let handle: &mut Handle = unsafe { &mut *(handle_ptr as *mut Handle) };
     handle.note("Plugin Close");
 
     unsafe {
-            drop(Box::from_raw(handle_ptr));
+        drop(Box::from_raw(handle_ptr));
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn openvpn_plugin_client_constructor_v1(
-    handle_ptr: *mut c_void
+    handle_ptr: *mut c_void,
 ) -> *const c_void {
-    let handle: &mut Handle = unsafe { &mut *(handle_ptr as *mut Handle)};
+    let handle: &mut Handle = unsafe { &mut *(handle_ptr as *mut Handle) };
     let client: VpnClient = VpnClient::new(handle);
     client.note("Client Constructor");
 
@@ -80,9 +77,9 @@ pub unsafe extern "C" fn openvpn_plugin_client_constructor_v1(
 #[no_mangle]
 pub unsafe extern "C" fn openvpn_plugin_client_destructor_v1(
     _handle_ptr: *mut c_void,
-    client_ptr: *mut c_void
+    client_ptr: *mut c_void,
 ) {
-    let client: &mut VpnClient = unsafe { &mut *(client_ptr as *mut VpnClient)};
+    let client: &mut VpnClient = unsafe { &mut *(client_ptr as *mut VpnClient) };
     client.note("Client Destructor");
 
     unsafe {
@@ -90,18 +87,17 @@ pub unsafe extern "C" fn openvpn_plugin_client_destructor_v1(
     }
 }
 
-
 #[no_mangle]
 pub unsafe extern "C" fn openvpn_plugin_func_v3(
     _version: c_int,
     args: *const OpenvpnPluginArgsFuncIn,
     _retptr: *const OpenvpnPluginArgsFuncReturn,
 ) -> c_int {
-    let handle: &mut Handle = unsafe { &mut *((*args).handle as *mut Handle)};
-    let client: &mut VpnClient = unsafe { &mut *((*args).per_client_context as *mut VpnClient)};
+    let handle: &mut Handle = unsafe { &mut *((*args).handle as *mut Handle) };
+    let client: &mut VpnClient = unsafe { &mut *((*args).per_client_context as *mut VpnClient) };
     let event_type = (*args).event_type;
 
-    let mut env: HashMap::<String, String> = HashMap::<String, String>::new();
+    let mut env: HashMap<String, String> = HashMap::<String, String>::new();
     env_to_map((*args).envp, &mut env);
     client.debug(format!("env for func {:?}: {:?}", event_type, &env).as_str());
 
@@ -111,31 +107,35 @@ pub unsafe extern "C" fn openvpn_plugin_func_v3(
         EventType::AuthUserPassVerify => on_auth_user_pass(handle, client, &env),
         EventType::ClientConnect => on_client_connect(handle, client, &env),
         EventType::ClientDisconnect => on_client_disconnect(handle, client, &env),
-        _ => OPENVPN_PLUGIN_FUNC_DEFERRED
+        _ => OPENVPN_PLUGIN_FUNC_DEFERRED,
     }
 }
 
-fn on_auth_user_pass(handle: &mut Handle, client: &mut VpnClient, env: &HashMap<String,String>) -> c_int {
+fn on_auth_user_pass(
+    handle: &mut Handle,
+    client: &mut VpnClient,
+    env: &HashMap<String, String>,
+) -> c_int {
     client.note("Auth User with Password");
     let username = match env.get("username") {
         Some(v) => v,
         None => {
             client.error("No Username supplied.");
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     };
     let password = match env.get("password") {
         Some(v) => v,
         None => {
             client.error("No Password supplied.");
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     };
     let auth_url = match &handle.config.auth_url {
         Some(v) => v,
         None => {
             client.error("No auth url in plugin configuration");
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     };
 
@@ -144,22 +144,23 @@ fn on_auth_user_pass(handle: &mut Handle, client: &mut VpnClient, env: &HashMap<
     let response = match http_client
         .get(auth_url)
         .basic_auth(username, Some(password))
-        .send() {
-            Ok(r) => r,
-            Err(e) => {
-                client.error(format!("Error connecting to {}: {}", auth_url, e).as_str());
-                return OPENVPN_PLUGIN_FUNC_ERROR
-            }
-        };
+        .send()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            client.error(format!("Error connecting to {}: {}", auth_url, e).as_str());
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
+    };
 
     match response.status() {
-         StatusCode::OK => {
-             client.note(format!("User {} successfuly authenticated", username).as_str());
-         },
-         _ => {
-             client.error("Authentication failed");
-             return OPENVPN_PLUGIN_FUNC_ERROR
-         }
+        StatusCode::OK => {
+            client.note(format!("User {} successfuly authenticated", username).as_str());
+        }
+        _ => {
+            client.error("Authentication failed");
+            return OPENVPN_PLUGIN_FUNC_ERROR;
+        }
     };
 
     let body: String = response.text().unwrap();
@@ -167,14 +168,14 @@ fn on_auth_user_pass(handle: &mut Handle, client: &mut VpnClient, env: &HashMap<
         Ok(j) => j,
         Err(err) => {
             client.error(format!("Cannot parse json: {}", err).as_str());
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     };
     client.api_auth_token = Some(match j["apiAuthToken"].as_str() {
         Some(t) => String::from(t),
         None => {
             client.error("No API token found in response");
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
     });
 
@@ -184,14 +185,13 @@ fn on_auth_user_pass(handle: &mut Handle, client: &mut VpnClient, env: &HashMap<
 fn on_client_connect(
     handle: &mut Handle,
     client: &VpnClient,
-    _env: &HashMap<String,String>
+    _env: &HashMap<String, String>,
 ) -> c_int {
     if handle.config.enable_firewall.is_some_and(|x| x) {
         if !firewalld_update_everybody_rules(handle, client) {
-            return OPENVPN_PLUGIN_FUNC_ERROR
+            return OPENVPN_PLUGIN_FUNC_ERROR;
         }
-    }
-    else {
+    } else {
         client.note("Firewall not activated, don't adding rules");
     }
 
@@ -201,7 +201,7 @@ fn on_client_connect(
 fn on_client_disconnect(
     handle: &mut Handle,
     client: &VpnClient,
-    _env: &HashMap<String,String>
+    _env: &HashMap<String, String>,
 ) -> c_int {
     if handle.config.enable_firewall.is_some_and(|x| x) {
         firewall_zone_down(handle, client);
@@ -210,7 +210,7 @@ fn on_client_disconnect(
     OPENVPN_PLUGIN_FUNC_SUCCESS
 }
 
-fn enable_forwarding(content: &String) -> Result<(),String> {
+fn enable_forwarding(content: &String) -> Result<(), String> {
     let mut f = match File::create(FN_IP_FORWATD) {
         Ok(f) => f,
         Err(msg) => {
@@ -218,29 +218,27 @@ fn enable_forwarding(content: &String) -> Result<(),String> {
         }
     };
     match f.write(content.as_bytes()) {
-        Ok(_) => {},
-        Err(msg) => {
-            return Err(msg.to_string())
-        }
+        Ok(_) => {}
+        Err(msg) => return Err(msg.to_string()),
     }
 
     Ok(())
 }
 
-fn on_plugin_up(handle: &mut Handle, client: &VpnClient, env: &HashMap<String,String>) -> c_int {
+fn on_plugin_up(handle: &mut Handle, client: &VpnClient, env: &HashMap<String, String>) -> c_int {
     client.note("Bringing plugin up ");
 
     if !configure_forwarding(handle, client) {
-        return OPENVPN_PLUGIN_FUNC_ERROR
+        return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 
     match handle.config.enable_firewall {
         Some(true) => {
             if !firewall_zone_up(handle, client, env) {
-                return OPENVPN_PLUGIN_FUNC_ERROR
+                return OPENVPN_PLUGIN_FUNC_ERROR;
             }
-        },
-        Some(_) => {},
+        }
+        Some(_) => {}
         None => {}
     }
 
@@ -249,63 +247,72 @@ fn on_plugin_up(handle: &mut Handle, client: &VpnClient, env: &HashMap<String,St
 
 fn configure_forwarding(handle: &mut Handle, client: &VpnClient) -> bool {
     match handle.config.enable_routing.as_deref() {
-        Some("OFF") => { client.note("Dont't enable roting"); },
+        Some("OFF") => {
+            client.note("Dont't enable roting");
+        }
         Some("ENABLE") => {
             client.note("Enabling forwarding");
             match enable_forwarding(&"1\n".to_string()) {
-                    Ok(_) => {}
-                    Err(msg) => {
-                        client.error(msg.as_str());
-                        return false
-                    }
+                Ok(_) => {}
+                Err(msg) => {
+                    client.error(msg.as_str());
+                    return false;
+                }
             };
-        },
+        }
         Some("RESTORE_ON_EXIT") => {
             let cur_forwarding_status = match read_to_string(FN_IP_FORWATD) {
                 Ok(s) => s,
                 Err(msg) => {
                     client.error(msg.to_string().as_str());
-                    return false
+                    return false;
                 }
-            }.replace("\n", "");
+            }
+            .replace("\n", "");
             client.note(
-                format!("Enabling forwarding and restore current value {}", cur_forwarding_status).as_str()
+                format!(
+                    "Enabling forwarding and restore current value {}",
+                    cur_forwarding_status
+                )
+                .as_str(),
             );
             let _ = handle.forwading_status.insert(cur_forwarding_status);
             match enable_forwarding(&"1\n".to_string()) {
-                    Ok(_) => {}
-                    Err(msg) => {
-                        client.error(msg.as_str());
-                        return false
-                    }
+                Ok(_) => {}
+                Err(msg) => {
+                    client.error(msg.as_str());
+                    return false;
+                }
             };
-        },
+        }
         Some(&_) => {
             client.error(format!("enable_routing has invalid value").as_str());
-            return false
-        },
-        None => {
-            client.note("enable_routing not specified, leaving untouched.")
+            return false;
         }
+        None => client.note("enable_routing not specified, leaving untouched."),
     };
 
     true
 }
 
-fn on_plugin_down(handle: &mut Handle, client: &VpnClient, _env: &HashMap<String,String>) -> c_int {
+fn on_plugin_down(
+    handle: &mut Handle,
+    client: &VpnClient,
+    _env: &HashMap<String, String>,
+) -> c_int {
     client.note("Bringing plugin down");
 
     match &handle.forwading_status {
         Some(v) => {
             client.note(format!("Restoring forwarding status {v}").as_str());
             match enable_forwarding(v) {
-                    Ok(_) => {}
-                    Err(msg) => {
-                        client.error(msg.as_str());
-                        return OPENVPN_PLUGIN_FUNC_ERROR
-                    }
+                Ok(_) => {}
+                Err(msg) => {
+                    client.error(msg.as_str());
+                    return OPENVPN_PLUGIN_FUNC_ERROR;
+                }
             };
-        },
+        }
         None => {
             client.note("Dont't restoring forwarding status");
         }
