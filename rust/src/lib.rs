@@ -191,6 +191,9 @@ fn on_client_connect(
             return OPENVPN_PLUGIN_FUNC_ERROR
         }
     }
+    else {
+        client.note("Firewall not activated, don't adding rules");
+    }
 
     OPENVPN_PLUGIN_FUNC_SUCCESS
 }
