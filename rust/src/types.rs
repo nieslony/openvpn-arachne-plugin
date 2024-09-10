@@ -128,10 +128,7 @@ pub fn events_to_bitmask(events: &[EventType]) -> c_int {
     bitmask
 }
 
-pub fn argv_to_list(
-    argv: *const *const c_char,
-    list: &mut LinkedList<String>
-) {
+pub fn argv_to_list(argv: *const *const c_char, list: &mut LinkedList<String>) {
     let mut next_arg = argv;
     unsafe {
         while (*next_arg) != ptr::null() {
@@ -144,10 +141,7 @@ pub fn argv_to_list(
     }
 }
 
-pub fn env_to_map(
-    argv: *const *const c_char,
-    map: &mut HashMap<String, String>
-) {
+pub fn env_to_map(argv: *const *const c_char, map: &mut HashMap<String, String>) {
     let mut next_arg = argv;
     unsafe {
         while (*next_arg) != ptr::null() {

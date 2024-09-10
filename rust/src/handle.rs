@@ -114,6 +114,7 @@ pub struct VpnClient {
     id: i32,
     log_func: PluginLog,
     pub api_auth_token: Option<String>,
+    pub username: Option<String>,
 }
 
 impl VpnClient {
@@ -122,6 +123,7 @@ impl VpnClient {
             id: handle.next_id(),
             log_func: handle.log_func,
             api_auth_token: None,
+            username: None,
         }
     }
 
@@ -145,6 +147,13 @@ impl VpnClient {
         self.log(
             OpenvpnPluginLogFlags::PlogNote,
             format!("NOTE {msg}").as_str(),
+        );
+    }
+
+    pub fn warn(&self, msg: &str) {
+        self.log(
+            OpenvpnPluginLogFlags::PlogWarn,
+            format!("WARNING {msg}").as_str(),
         );
     }
 
