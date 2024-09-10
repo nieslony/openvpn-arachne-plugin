@@ -14,3 +14,4 @@ missing
 src/Makefile.in
 **/*~
 **/*.kate-swp
+Cargo.lock
