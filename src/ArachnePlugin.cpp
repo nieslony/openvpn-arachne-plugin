@@ -33,13 +33,14 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger.note() << "Reading configuration from " << configFile << std::flush;
 
     readConfigFile(configFile);
-    _authUrl = _config.get("auth-url", "");
+    _loginUrl = _config.get("url-login", "");
+    _authUrl = _config.get("url-auth", "");
     _enableRouting = _config.get("enable-routing");
     _enableFirewall = _config.getBool("enable-firewall", false);
     if (_enableFirewall) {
         _firewallZoneName = _config.get("firewall-zone");
-        _firewallUrlUser = _config.get("firewall-url") + "/user_rules";
-        _firewallUrlEverybody = _config.get("firewall-url") + "/everybody_rules";
+        _firewallUrlUser = _config.get("url-firewall-user");
+        _firewallUrlEverybody = _config.get("url-firewall-everybody");
     }
     _clientConfig = _config.get("client-config", "");
 }
@@ -89,11 +90,12 @@ int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
     const std::string username(getEnv("username", envp));
     const std::string password(getEnv("password", envp));
 
-    Url url(_authUrl);
+    Url url(_loginUrl);
     try {
-        session->authUser(url, username, password);
+        session->loginUser(url, username, password);
     }
     catch (PluginException &ex) {
+        session->logger().error() << ex.what() << std::flush;
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 
@@ -132,7 +134,6 @@ void ArachnePlugin::setRoutingStatus(const std::string& forward)
     if (!ofs.is_open()) {
         throw std::runtime_error("Cannot open " + FN_IP_FORWATD + " for reading");
     }
-    _logger.note() << "echo " << forward << " > " << FN_IP_FORWATD << std::flush;
     ofs << forward << std::endl;
     ofs.close();
 }
@@ -160,7 +161,9 @@ void ArachnePlugin::setRouting(ClientSession *session)
 void ArachnePlugin::restoreRouting(ClientSession *session)
 {
     if (_savedIpForward != "1" && _savedIpForward != "") {
-        session->logger().note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
+        session->logger().note()
+            << "Restoring IP forwading to " << _savedIpForward
+            << std::flush;
         setRoutingStatus(_savedIpForward);
     } else {
         session->logger().note() << "Leaving routing untouched" << std::flush;
@@ -191,14 +194,14 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
                 settings["target"] = "DROP";
-                settings["interfaces"] = std::vector<std::string> { "arachne" };
+                settings["interfaces"] = std::vector<std::string> { _interface };
                 firewallConfig.addZone2(_firewallZoneName, settings);
             }
 
             std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
             std::map<std::string, std::vector<std::string>> policies;
-            policies["arachne-incoming"] = { "arachne", "public" };
-            policies["arachne-outgoing"] = { "public", "arachne" };
+            policies["arachne-incoming"] = { _firewallZoneName, "public" };
+            policies["arachne-outgoing"] = { "public", _firewallZoneName };
             for (const auto&[pname, pzones] : policies) {
                 if (std::any_of(
                     currentPolicies.begin(), currentPolicies.end(),
@@ -243,6 +246,8 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
 
 int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*session) noexcept
 {
+    dumpEnv(_logger.debug(), envp) << std::flush;
+    _interface = getEnv("dev", envp);
     session->logger().note() << "Plugin up..." << std::flush;
     setRouting(session);
     createFirewallZone(session);

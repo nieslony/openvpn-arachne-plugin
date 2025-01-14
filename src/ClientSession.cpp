@@ -177,17 +177,35 @@ std::string makeBasicAuth(const std::string &username, const std::string &passwo
     return "Basic " + os.str();
 }
 
-void ClientSession::authUser(const Url &url, const std::string &username, const std::string &password)
+std::string ClientSession::makeBearerAuth()
 {
+    return "Bearer " + _apiToken;
+}
+
+void ClientSession::loginUser(
+    const Url &url,
+    const std::string &username,
+    const std::string &password
+) {
+    _username = username;
+    std::string body;
     try
     {
-        doHttp(url, username, password);
-        _username = username;
-        _password = password;
+        body = doHttp(url, makeBasicAuth(username, password));
     }
     catch (HttpException &ex)
     {
         throw PluginException("Authentication failed", ex.what());
+    }
+
+    boost::property_tree::ptree json;
+    try {
+        std::istringstream iss(body);
+        boost::property_tree::read_json(iss, json);
+        _apiToken = json.get<std::string>("apiAuthToken");
+    }
+    catch (const std::exception &ex) {
+        throw PluginException("Cannot parse json", ex.what());
     }
 
     return;
@@ -447,7 +465,7 @@ void ClientSession::readJson(
     std::string body;
 
     try {
-        body = doHttp(url, _username, _password);
+        body = doHttp(url, makeBearerAuth());
     }
     catch (HttpException &ex) {
         std::stringstream msg;
@@ -467,8 +485,7 @@ void ClientSession::readJson(
 
 std::string ClientSession::doHttp(
     const Url &url,
-    const std::string &username,
-    const std::string &password
+    const std::string &authentication
 ) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
@@ -477,7 +494,7 @@ std::string ClientSession::doHttp(
 
     http::request<http::string_body> req{http::verb::get, url.path(), 11};
     req.set(http::field::host, url.host());
-    req.set(http::field::authorization, makeBasicAuth(username, password));
+    req.set(http::field::authorization, authentication);
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
     http::response<http::string_body> res;
 

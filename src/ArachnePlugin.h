@@ -59,6 +59,8 @@ public:
     const std::string &clientConfig() { return _clientConfig; }
     bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
 
+    const std::string &interface() const { return _interface; }
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
@@ -69,6 +71,7 @@ private:
     FirewallD1_Zone _firewallZone;
     FirewallD1_Policy _firewallPolicy;
 
+    Url _loginUrl;
     Url _authUrl;
     Url _firewallUrlUser;
     Url _firewallUrlEverybody;
@@ -78,6 +81,7 @@ private:
     bool _enableFirewall;
     std::string _firewallZoneName;
     std::string _clientConfig;
+    std::string _interface;
 
     const char* getEnv(const char* key, const char *envp[]);
     std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);

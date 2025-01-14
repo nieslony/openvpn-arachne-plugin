@@ -66,7 +66,7 @@ public:
     void remoteIp(const std::string &ip) { _remoteIp = ip; }
     const std::string &remoteIp() const { return _remoteIp; }
 
-    void authUser(
+    void loginUser(
         const Url &url,
         const std::string &username,
         const std::string &password
@@ -87,7 +87,7 @@ private:
     ArachneLogger _logger;
     int _sessionId;
     std::string _username;
-    std::string _password;
+    std::string _apiToken;
     std::set<std::string> _incomingForwardingRules;
     std::set<std::string> _incomingRules;
     IcmpRules _icmpRules;
@@ -100,8 +100,7 @@ private:
 
     std::string doHttp(
         const Url &url,
-        const std::string &username,
-        const std::string &password
+        const std::string &authentication
     );
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
@@ -112,6 +111,7 @@ private:
     void readJson(const Url &url, boost::property_tree::ptree &json);
     void addRoute(int fd, const std::string &address, const std::string &mask);
     void removeRoute(int fd, const std::string &address, const std::string &mask);
+    std::string makeBearerAuth();
 };
 
 #endif
