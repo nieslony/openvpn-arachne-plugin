@@ -24,6 +24,7 @@
 #include <boost/asio/ssl/stream.hpp>
 
 #include <set>
+#include <list>
 
 class Url;
 class ArachnePlugin;
@@ -34,6 +35,20 @@ enum IcmpRules {
     DENY
 };
 
+class RemoteNetwork {
+public:
+    RemoteNetwork(const std::string &address, const std::string &mask)
+        : _address(address), _mask(mask)
+    {}
+
+    const std::string &address() const { return _address; };
+    const std::string &mask() const { return _mask; };
+
+private:
+    const std::string _address;
+    const std::string _mask;
+};
+
 class ClientSession
 {
 public:
@@ -42,18 +57,30 @@ public:
 
     void readConfigFile(const std::string &filename);
 
-    void setCommonName(const std::string &commonName) { _commonName = commonName; }
+    void commonName(const std::string &commonName) { _commonName = commonName; }
     const std::string &commonName() const { return _commonName; }
-    void setClientIp(const std::string &ip) { _ip = ip; }
-    const std::string &clientIp() const { return _ip; }
 
-    bool authUser(const Url &url, const std::string &username, const std::string &password);
-    bool setFirewallRules(const std::string &clientIp);
-    bool removeFirewalRules();
-    bool updateEverybodyRules();
-    bool verifyClientIp();
+    void vpnIp(const std::string &ip) { _vpnIp = ip; }
+    const std::string &vpnIp() const { return _vpnIp; }
 
-    ArachneLogger &getLogger() { return _logger; }
+    void remoteIp(const std::string &ip) { _remoteIp = ip; }
+    const std::string &remoteIp() const { return _remoteIp; }
+
+    void authUser(
+        const Url &url,
+        const std::string &username,
+        const std::string &password
+    );
+    void verifyClientIp();
+
+    void addUserFirewallRules();
+    void removeUserFirewalRules();
+    void updateEverybodyRules();
+
+    void addRoutesToRemoteNetworks();
+    void removeRoutesToRemoteNetworks();
+
+    ArachneLogger &logger() { return _logger; }
 
 private:
     ArachnePlugin &_plugin;
@@ -67,16 +94,24 @@ private:
     std::string _commonName;
     bool _verifyIpDns;
     std::vector<std::string> _ipWhitelist;
-    std::string _ip;;
+    std::string _vpnIp;
+    std::string _remoteIp;
+    std::list<RemoteNetwork> _remoteNetworks;
 
-    std::string doHttp(const Url &url, const std::string &username, const std::string &password);
+    std::string doHttp(
+        const Url &url,
+        const std::string &username,
+        const std::string &password
+    );
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
         std::set<std::string> &forwardingRules,
         std::set<std::string> &localRules,
         const std::string &clientIp = ""
     );
-    bool readJson(const Url &url, boost::property_tree::ptree &json);
+    void readJson(const Url &url, boost::property_tree::ptree &json);
+    void addRoute(int fd, const std::string &address, const std::string &mask);
+    void removeRoute(int fd, const std::string &address, const std::string &mask);
 };
 
 #endif

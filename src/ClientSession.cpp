@@ -30,6 +30,9 @@
 #include <sstream>
 #include <string>
 
+#include <net/route.h>
+#include <sys/socket.h>
+
 namespace beast = boost::beast;     // from <boost/beast.hpp>
 namespace http = beast::http;       // from <boost/beast/http.hpp>
 namespace net = boost::asio;        // from <boost/asio.hpp>
@@ -60,18 +63,35 @@ void ClientSession::readConfigFile(const std::string &filename)
         }
         config.load(ifs);
         ifs.close();
+
         std::string siteVerification = config.get("site-verification", "");
         if (siteVerification == "DNS")
             _verifyIpDns = true;
         else
             _verifyIpDns = false;
-        _logger.note() << "Client verification type: " << siteVerification;
+        _logger.debug()
+            << "Client verification type: " << siteVerification
+            << std::flush;
         if (siteVerification == "WHITELIST") {
             std::string ipWhiteList = config.get("ip-wihtelist");
             boost::algorithm::split_regex(_ipWhitelist, ipWhiteList, boost::regex(", *"));
-            _logger.note() << " IP whitelist: " << ipWhiteList;
+            _logger.debug()
+                << " IP whitelist: " << ipWhiteList
+                << std::flush;
         }
-        _logger.note() << std::flush;
+
+        int noRemoteNetworks = config.getInt("no-remote-networks", -1);
+        for (int i = 0; i < noRemoteNetworks; i++) {
+            std::string addressKey =
+                "remote-network" + std::to_string(i) + "-address";
+            std::string maskKey =
+                "remote-network" + std::to_string(i) + "-mask";
+            const RemoteNetwork remoteNetwork(
+                config.get(addressKey),
+                config.get(maskKey)
+            );
+            _remoteNetworks.push_back(remoteNetwork);
+        }
     }
     catch (std::exception &ex) {
         std::stringstream str;
@@ -80,47 +100,59 @@ void ClientSession::readConfigFile(const std::string &filename)
     }
 }
 
-bool ClientSession::verifyClientIp()
+void ClientSession::verifyClientIp()
 {
     if (_verifyIpDns)
     {
-        boost::asio::ip::address_v4 ip = boost::asio::ip::address_v4::from_string(_ip);
+        boost::asio::ip::address_v4 ip =
+            boost::asio::ip::address_v4::from_string(vpnIp());
         boost::asio::io_service io_service;
         boost::asio::ip::tcp::resolver resolver(io_service);
-        boost::asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(_commonName, "");
-//        for (auto it = endpoints.cbegin(); it != endpoints.cend(); it++)
+        boost::asio::ip::tcp::resolver::results_type endpoints =
+            resolver.resolve(_commonName, "");
         for (auto &it : endpoints)
         {
             boost::asio::ip::tcp::endpoint endpoint = it;
             if (endpoint.address() == ip)
             {
                 _logger.note()
-                    << "IP verification succeeded. IP " << _ip
+                    << "IP verification succeeded. IP " << vpnIp()
                     << " matches DNS entry " <<_commonName
                     << std::flush;
-                return true;
+                return;
             }
         }
-        _logger.error() << "IP verification failed. IP " << _ip << " does not match DNS entry" << std::flush;
-        return false;
+        std::stringstream msg;
+        msg
+            << "IP verification failed. IP " << vpnIp()
+            << " does not match DNS entry"
+            << std::flush;
+        throw PluginException(msg.str());
     }
 
     if (!_ipWhitelist.empty())
     {
         for (auto &it :_ipWhitelist)
         {
-            if (it == _ip)
+            if (it == vpnIp())
             {
-                _logger.note() << "IP verification succeeded. IP " << _ip << " matches whitelist" << std::flush;
-                return true;
+                _logger.note()
+                    << "IP verification succeeded. IP " << vpnIp()
+                    << " matches whitelist"
+                    << std::flush;
+                return;
             }
         }
-        _logger.error() << "IP verification failed. IP " << _ip << " does not match whitelist" << std::flush;
-        return false;
+        std::stringstream msg;
+        msg
+            << "IP verification failed. IP " << vpnIp()
+            << " does not match whitelist"
+            << std::flush;
+        throw PluginException(msg.str());
     }
 
     _logger.note() << "No client verification enabled" << std::flush;
-    return true;
+    return;
 }
 
 std::string makeBasicAuth(const std::string &username, const std::string &password)
@@ -145,7 +177,7 @@ std::string makeBasicAuth(const std::string &username, const std::string &passwo
     return "Basic " + os.str();
 }
 
-bool ClientSession::authUser(const Url &url, const std::string &username, const std::string &password)
+void ClientSession::authUser(const Url &url, const std::string &username, const std::string &password)
 {
     try
     {
@@ -155,31 +187,30 @@ bool ClientSession::authUser(const Url &url, const std::string &username, const 
     }
     catch (HttpException &ex)
     {
-        _logger.error() << ex.what() << std::flush;
-        _logger.error() << "Authentication failed" << std::flush;
-        return false;
+        throw PluginException("Authentication failed", ex.what());
     }
 
-    return true;
+    return;
 }
 
-bool ClientSession::setFirewallRules(const std::string &clientIp)
+void ClientSession::addUserFirewallRules()
 {
     _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
     boost::property_tree::ptree json;
-    if (!readJson(_plugin.getFirewallUrlUser(), json))
-        return false;
+    readJson(_plugin.firewallUrlUser(), json);
 
     try {
         BOOST_FOREACH(
             boost::property_tree::ptree::value_type &v, json
         ) {
-            insertRichRules(v, _incomingForwardingRules, _incomingRules, clientIp);
+            insertRichRules(v, _incomingForwardingRules, _incomingRules, vpnIp());
         }
     }
     catch (boost::property_tree::ptree_bad_path &ex) {
-        _logger.error() << "Invalid firewall rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException(
+            "Invalid firewall rules",
+            ex.what()
+        );
     }
     _logger.note() << _username << "'s forwarding rules:" << std::flush;
     for (auto r : _incomingForwardingRules)
@@ -209,8 +240,10 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
         _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
-        _logger.error() << "Cannot update incoming policy rich rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException(
+            "Cannot update incoming policy rich rules",
+            ex.what()
+        );
     }
 
     try {
@@ -220,16 +253,16 @@ bool ClientSession::setFirewallRules(const std::string &clientIp)
         }
     }
     catch (const sdbus::Error &ex) {
-        _logger.error() << "Cannot update incoming rich rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException(
+            "Cannot update incoming rich rules",
+            ex.what()
+        );
     }
 
     _logger.note() << _username << "'s rich rules updated" << std::flush;
-
-    return true;
 }
 
-bool ClientSession::removeFirewalRules()
+void ClientSession::removeUserFirewalRules()
 {
     _logger.note() << "Removing " << _username << "'s rich rules" << std::flush;
     try {
@@ -258,8 +291,7 @@ bool ClientSession::removeFirewalRules()
             _logger.note() << "There are no forwarding rich rules" << std::flush;
     }
     catch (const sdbus::Error &ex) {
-        _logger.error() << "Cannot update forwarding rich rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException("Cannot update forwarding rich rules: ", ex.what());
     }
 
     try {
@@ -268,19 +300,15 @@ bool ClientSession::removeFirewalRules()
         }
     }
     catch (const sdbus::Error &ex) {
-        _logger.error() << "Cannot update incoming rich rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }
-
-    return true;
 }
 
-bool ClientSession::updateEverybodyRules()
+void ClientSession::updateEverybodyRules()
 {
     _logger.note() << "Updating everybody rules" << std::flush;
     boost::property_tree::ptree json;
-    if (!readJson(_plugin.getFirewallUrlEverybody(), json))
-        return false;
+    readJson(_plugin.firewallUrlEverybody(), json);
 
     std::set<std::string> newForwardingRules;
     std::set<std::string> newLocalRules;
@@ -299,8 +327,7 @@ bool ClientSession::updateEverybodyRules()
             _icmpRules = ALLOW_ALL_GRANTED;
         }
         else {
-            _logger.error() << "Invalid value of icmpRules: " << icmpRules << std::flush;
-            return false;
+            throw PluginException("Invalid value of icmpRules: ", icmpRules);
         }
 
         BOOST_FOREACH(
@@ -311,8 +338,7 @@ bool ClientSession::updateEverybodyRules()
         }
     }
     catch (boost::property_tree::ptree_bad_path &ex) {
-        _logger.error() << "Invalid firewall rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException("Invalid firewall rules", ex.what());
     }
     _logger.note() << "Everybody rules:" << std::flush;
     for (auto r : newForwardingRules)
@@ -343,12 +369,10 @@ bool ClientSession::updateEverybodyRules()
         _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
-        _logger.error() << "Cannot update rich rules: " << ex.what() << std::flush;
-        return false;
+        throw PluginException("Cannot update rich rules", ex.what());
     }
 
     _logger.note() << "Everybody rich rules updated" << std::flush;
-    return true;
 }
 
 void ClientSession::insertRichRules(
@@ -364,7 +388,7 @@ void ClientSession::insertRichRules(
     std::string destination;
     value = node.second.get_optional<std::string>("destinationAddress");
     if (value.has_value()) {
-        if (!_plugin.getMyIps().contains(value.value()))
+        if (!_plugin.myIps().contains(value.value()))
             destination = " destination address=\"" + value.value() + "\"";
     }
 
@@ -415,8 +439,10 @@ void ClientSession::insertRichRules(
     }
 }
 
-bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
-{
+void ClientSession::readJson(
+    const Url &url,
+    boost::property_tree::ptree &json
+) {
     _logger.note() << "Getting rules from " << url.str() << std::flush;
     std::string body;
 
@@ -424,8 +450,9 @@ bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
         body = doHttp(url, _username, _password);
     }
     catch (HttpException &ex) {
-        _logger.error() << "Error connecting to " << url.str() << ": " << ex.what() << std::flush;;
-        return false;
+        std::stringstream msg;
+        msg << "Error connecting to " << url.str();
+        throw PluginException(msg.str(), ex.what());
     }
 
     try {
@@ -433,16 +460,16 @@ bool ClientSession::readJson(const Url &url, boost::property_tree::ptree &json)
         boost::property_tree::read_json(iss, json);
     }
     catch (const std::exception &ex) {
-        _logger.error() << "Cannot parse json. " << ex.what() << std::flush;;
-        return false;
+        throw PluginException("Cannot parse json", ex.what());
     }
     _logger.note() << "Got " << body << std::endl;
-
-    return true;
 }
 
-std::string ClientSession::doHttp(const Url &url, const std::string &username, const std::string &password)
-{
+std::string ClientSession::doHttp(
+    const Url &url,
+    const std::string &username,
+    const std::string &password
+) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
     auto const results = resolver.resolve(url.host(), std::to_string(url.port()));
@@ -489,4 +516,108 @@ std::string ClientSession::doHttp(const Url &url, const std::string &username, c
     }
 
     return res.body();
+}
+
+void ClientSession::addRoutesToRemoteNetworks()
+{
+    if (_remoteNetworks.empty()) {
+        _logger.note()
+            << "No remote networks configured. Dont't add any routes."
+            << std::flush;
+        return;
+    }
+
+    int fd = socket(PF_INET, SOCK_DGRAM,  IPPROTO_IP);
+    for(const auto &it : _remoteNetworks) {
+        _logger.note() <<
+            "Add route to remote network "
+            << it.address() << " " << it.mask()
+            << std::flush;
+        addRoute(fd, it.address(), it.mask());
+    }
+    close(fd);
+}
+
+void ClientSession::removeRoutesToRemoteNetworks()
+{
+    if (_remoteNetworks.empty()) {
+        _logger.note()
+            << "No remote networks configured. Dont't remove any routes."
+            << std::flush;
+        return;
+    }
+
+    int fd = socket(PF_INET, SOCK_DGRAM,  IPPROTO_IP);
+    for(const auto &it : _remoteNetworks) {
+        _logger.note() <<
+            "Remove route to remote network "
+            << it.address() << " " << it.mask()
+            << std::flush;
+        removeRoute(fd, it.address(), it.mask());
+    }
+    close(fd);
+}
+
+void ClientSession::addRoute(
+    int fd,
+    const std::string &address,
+    const std::string &mask
+) {
+    struct sockaddr_in * addr;
+    struct rtentry route;
+    memset(&route, 0, sizeof(route));
+    route.rt_flags = RTF_UP | RTF_GATEWAY;
+
+    // gatway
+    addr = (struct sockaddr_in*)&route.rt_gateway;
+    addr->sin_family = AF_INET;
+    addr->sin_addr.s_addr = inet_addr(vpnIp().c_str());
+
+    // destination
+    addr = (struct sockaddr_in*) &route.rt_dst;
+    addr->sin_family = AF_INET;
+    addr->sin_addr.s_addr = inet_addr(address.c_str());;
+
+    // mask
+    addr = (struct sockaddr_in*)&route.rt_genmask;
+    addr->sin_family = AF_INET;
+    addr->sin_addr.s_addr = inet_addr(mask.c_str());
+
+    if (ioctl( fd, SIOCADDRT, &route) < 0)
+    {
+        throw PluginException(
+            "Cannot add route to "
+            + address + " " + mask +
+            ": " + strerror(errno)
+        );
+    }
+}
+
+void ClientSession::removeRoute(
+    int fd,
+    const std::string &address,
+    const std::string &mask
+) {
+    struct sockaddr_in * addr;
+    struct rtentry route;
+    memset(&route, 0, sizeof(route));
+
+    // destination
+    addr = (struct sockaddr_in*) &route.rt_dst;
+    addr->sin_family = AF_INET;
+    addr->sin_addr.s_addr = inet_addr(address.c_str());;
+
+    // mask
+    addr = (struct sockaddr_in*)&route.rt_genmask;
+    addr->sin_family = AF_INET;
+    addr->sin_addr.s_addr = inet_addr(mask.c_str());
+
+    if (ioctl( fd, SIOCDELRT, &route) < 0)
+    {
+        throw PluginException(
+            "Cannot remove route to "
+            + address + " " + mask +
+            ": " + strerror(errno)
+        );
+    }
 }

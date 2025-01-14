@@ -51,7 +51,6 @@ bool Config::getBool(const std::string& key)
 
 bool Config::getBool(const std::string &key, bool default_value)
 {
-    std::cout << key << "=" <<default_value << std::endl;
     try {
         std::string value = _entries.at(key);
         if (value == "true" || value == "yes" || value == "on")
@@ -62,6 +61,32 @@ bool Config::getBool(const std::string &key, bool default_value)
     }
     catch (std::out_of_range &ex) {
         return default_value;
+    }
+}
+
+int Config::getInt(const std::string &key)
+{
+    std::string value = get(key);
+    try {
+        return std::stoi(value);
+    }
+    catch (std::invalid_argument &ex) {
+        throw ConfigException("key " + key + " has invalid int value: " + value);
+    }
+}
+
+int Config::getInt(const std::string &key, int default_value)
+{
+    std::string value;
+    try {
+        value = _entries.at(key);
+        return std::stoi(value);
+    }
+    catch (std::out_of_range &ex) {
+        return default_value;
+    }
+    catch (std::invalid_argument &ex) {
+        throw ConfigException("key " + key + " has invalid int value: " + value);
     }
 }
 

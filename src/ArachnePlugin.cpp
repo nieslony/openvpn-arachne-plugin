@@ -8,6 +8,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <cerrno>
 #include <fstream>
+#include <openvpn-plugin.h>
 #include <sstream>
 #include <numeric>
 
@@ -85,14 +86,18 @@ const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
 
 int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
 {
-    std::string username(getEnv("username", envp));
-    std::string password(getEnv("password", envp));
+    const std::string username(getEnv("username", envp));
+    const std::string password(getEnv("password", envp));
 
     Url url(_authUrl);
-    if (session->authUser(url, username, password))
-        return OPENVPN_PLUGIN_FUNC_SUCCESS;
-    else
+    try {
+        session->authUser(url, username, password);
+    }
+    catch (PluginException &ex) {
         return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+
+    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
 void ArachnePlugin::readConfigFile(const char*filename)
@@ -110,7 +115,7 @@ std::string ArachnePlugin::getRoutingStatus()
 {
     std::string s;
     std::ifstream ifs;
-    ifs.open (FN_IP_FORWATD);
+    ifs.open(FN_IP_FORWATD);
     if (!ifs.is_open()) {
         throw std::runtime_error("Error opening " + FN_IP_FORWATD);
     }
@@ -137,16 +142,16 @@ void ArachnePlugin::setRouting(ClientSession *session)
     if (_enableRouting == "RESTORE_ON_EXIT") {
         _savedIpForward = getRoutingStatus();
         if (_savedIpForward == "0") {
-            session->getLogger().note() << "Enabling IP forwarding" << std::flush;
+            session->logger().note() << "Enabling IP forwarding" << std::flush;
             setRoutingStatus("1");
         } else {
-            session->getLogger().note() << "IP forwarding already enabled" << std::flush;
+            session->logger().note() << "IP forwarding already enabled" << std::flush;
         }
     } else if (_enableRouting == "ENABLE") {
-        session->getLogger().note() << "Enabling IP forwarding" << std::flush;
+        session->logger().note() << "Enabling IP forwarding" << std::flush;
         setRoutingStatus("1");
     } else if (_enableRouting == "OFF") {
-        session->getLogger().note() << "Don't enable IP forwarding" << std::flush;
+        session->logger().note() << "Don't enable IP forwarding" << std::flush;
     } else {
         throw PluginException("Invalid value of enable-routing: " + _enableRouting);
     }
@@ -155,10 +160,10 @@ void ArachnePlugin::setRouting(ClientSession *session)
 void ArachnePlugin::restoreRouting(ClientSession *session)
 {
     if (_savedIpForward != "1" && _savedIpForward != "") {
-        session->getLogger().note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
+        session->logger().note() << "Restoring IP forwading to " << _savedIpForward << std::flush;
         setRoutingStatus(_savedIpForward);
     } else {
-        session->getLogger().note() << "Leaving routing untouched" << std::flush;
+        session->logger().note() << "Leaving routing untouched" << std::flush;
     }
 }
 
@@ -176,12 +181,12 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                 [this](std::string s){ return s == _firewallZoneName; }
             )
             ) {
-                session->getLogger().note()
+                session->logger().note()
                     << "Firewall Zone '" << _firewallZoneName << "' already exists"
                     << std::flush;
             }
             else {
-                session->getLogger().note()
+                session->logger().note()
                     << "Creating firewall zone '" << _firewallZoneName << "'"
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
@@ -200,12 +205,12 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                     [pname](std::string s){ return s == pname; }
                 )
                 ) {
-                    session->getLogger().note()
+                    session->logger().note()
                         << "Firewall Policy '" << pname << "' already exists"
                         << std::flush;
                 }
                 else {
-                    session->getLogger().note()
+                    session->logger().note()
                         << "Creating firewall policy '" << pname << "'"
                         << std::flush;
                     std::map<std::string, sdbus::Variant> settings;
@@ -238,7 +243,7 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
 
 int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*session) noexcept
 {
-    session->getLogger().note() << "Plugin up..." << std::flush;
+    session->logger().note() << "Plugin up..." << std::flush;
     setRouting(session);
     createFirewallZone(session);
     removeAllRichRules();
@@ -249,7 +254,7 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessio
 
 int ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session) noexcept
 {
-    session->getLogger() << "Plugin down..." << std::flush;
+    session->logger() << "Plugin down..." << std::flush;
     removeAllRichRules();
     restoreRouting(session);
 
@@ -262,34 +267,39 @@ int ArachnePlugin::clientConnect(
     ClientSession*session
 ) noexcept
 {
-    //dumpEnv(session->getLogger().note(), envp) << std::flush;
-    _logger.note() << "Client connected" << std::flush;
-    if (!_clientConfig.empty()) {
-        try {
-            session->setCommonName(getEnv("common_name", envp));
-            session->setClientIp(getEnv("untrusted_ip", envp));
-        }
-        catch (PluginException &ex) {
-            _logger.error() << ex.what() << std::flush;
-            return OPENVPN_PLUGIN_FUNC_ERROR;
-        }
-        try {
-            session->readConfigFile(_clientConfig);
-            if (!session->verifyClientIp())
+    dumpEnv(session->logger().debug(), envp) << std::flush;
+    session->commonName(getEnv("common_name", envp));
+    session->remoteIp(getEnv("untrusted_ip", envp));
+    session->vpnIp(getEnv("ifconfig_pool_remote_ip", envp));
+    session->logger().note() << "New client session:"
+        << std::endl << "  common name: " << session->commonName()
+        << std::endl << "  remote IP: " << session->remoteIp()
+        << std::endl << "  VPN IP: " << session->vpnIp()
+        << std::flush;
+
+    try {
+        if (!_clientConfig.empty()) {
+            try {
+                session->readConfigFile(_clientConfig);
+                session->verifyClientIp();
+                session->addRoutesToRemoteNetworks();
+            }
+            catch (ConfigException &ex) {
+                session->logger().error() << ex.what() << std::endl;
                 return OPENVPN_PLUGIN_FUNC_ERROR;
+            }
         }
-        catch (ConfigException &ex) {
-            _logger.error() << ex.what() << std::endl;
-            return OPENVPN_PLUGIN_FUNC_ERROR;
+
+        if (_enableFirewall) {
+            session->updateEverybodyRules();
+            session->addUserFirewallRules();
         }
+    }
+    catch (PluginException &ex) {
+        session->logger().error() << ex.what() << std::flush;
+        return OPENVPN_PLUGIN_FUNC_ERROR;
     }
 
-    if (_enableFirewall)
-    {
-        std::string clientIp(getEnv("ifconfig_pool_remote_ip", envp));
-        if (!session->updateEverybodyRules() || !session->setFirewallRules(clientIp))
-            return OPENVPN_PLUGIN_FUNC_ERROR;
-    }
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
@@ -299,13 +309,19 @@ int ArachnePlugin::clientDisconnect(
     ClientSession* session
 ) noexcept
 {
-    if (_enableFirewall)
-    {
-        if (session->removeFirewalRules())
-            return OPENVPN_PLUGIN_FUNC_SUCCESS;
-        else
-            return OPENVPN_PLUGIN_FUNC_ERROR;
+    session->logger().note() << "Client " << session->commonName()
+        << " from " << session->remoteIp()
+        << " disconnected" << std::flush;
+    try {
+        if (_enableFirewall)
+            session->removeUserFirewalRules();
+        session->removeRoutesToRemoteNetworks();
     }
+    catch (PluginException &ex) {
+        session->logger().error() << ex.what() << std::flush;
+        return OPENVPN_PLUGIN_FUNC_ERROR;
+    }
+
     return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 

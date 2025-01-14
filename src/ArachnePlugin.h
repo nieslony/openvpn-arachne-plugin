@@ -25,6 +25,9 @@ class ClientSession;
 class PluginException : public std::runtime_error {
 public:
     PluginException(const std::string& what) : runtime_error(what) {}
+    PluginException(const std::string& what, const std::string &why)
+        : runtime_error(what + ": " + why)
+    {}
 };
 
 class ArachnePlugin
@@ -34,21 +37,21 @@ public:
     ~ArachnePlugin();
 
     ClientSession *createClientSession();
-    int userAuthPassword(const char *envp[], ClientSession*);
 
     void setRouting(ClientSession*);
     void restoreRouting(ClientSession*);
     void createFirewallZone(ClientSession*);
 
+    int userAuthPassword(const char *envp[], ClientSession*);
     int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
     int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
 
-    const std::string &getFirewallZoneName() { return _firewallZoneName; }
-    const Url &getFirewallUrlUser() { return _firewallUrlUser; }
-    const Url &getFirewallUrlEverybody() { return _firewallUrlEverybody; }
-    const std::set<std::string> &getMyIps() { return _myIps; }
+    const std::string &firewallZoneName() { return _firewallZoneName; }
+    const Url &firewallUrlUser() { return _firewallUrlUser; }
+    const Url &firewallUrlEverybody() { return _firewallUrlEverybody; }
+    const std::set<std::string> &myIps() { return _myIps; }
 
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
     FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }

@@ -27,6 +27,9 @@ public:
     bool getBool(const std::string &key);
     bool getBool(const std::string &key, bool default_value);
 
+    int getInt(const std::string &key);
+    int getInt(const std::string &key, int default_value);
+
 private:
     std::map<std::string, std::string> _entries;
 };

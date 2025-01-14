@@ -10,10 +10,11 @@
 #include "ClientSession.h"
 
 OPENVPN_EXPORT int
-openvpn_plugin_open_v3 (const int version,
+openvpn_plugin_open_v3 (
+    const int version,
     struct openvpn_plugin_args_open_in const *arguments,
-    struct openvpn_plugin_args_open_return *retptr)
-{
+    struct openvpn_plugin_args_open_return *retptr
+) {
     try {
         ArachnePlugin *context = new ArachnePlugin(arguments);
 
@@ -37,7 +38,11 @@ openvpn_plugin_open_v3 (const int version,
     catch (...) {
         va_list a;
         va_end(a);
-        arguments->callbacks->plugin_vlog(PLOG_ERR, "Arachne", "Something went wrong...", a);
+        arguments->callbacks->plugin_vlog(
+            PLOG_ERR,
+            "Arachne", "Something went wrong...",
+            a
+        );
 
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
@@ -54,12 +59,14 @@ openvpn_plugin_close_v1(openvpn_plugin_handle_t handle)
 }
 
 OPENVPN_EXPORT int
-openvpn_plugin_func_v3(const int version,
-                       struct openvpn_plugin_args_func_in const *args,
-                       struct openvpn_plugin_args_func_return *retptr)
-{
+openvpn_plugin_func_v3(
+    const int version,
+    struct openvpn_plugin_args_func_in const *args,
+    struct openvpn_plugin_args_func_return *retptr
+) {
     ArachnePlugin *plugin = reinterpret_cast<ArachnePlugin*>(args->handle);
-    ClientSession *session = reinterpret_cast<ClientSession*>(args->per_client_context);
+    ClientSession *session =
+        reinterpret_cast<ClientSession*>(args->per_client_context);
 
     switch (args->type) {
         case OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY:
@@ -78,8 +85,9 @@ openvpn_plugin_func_v3(const int version,
 }
 
 OPENVPN_EXPORT void*
-openvpn_plugin_client_constructor_v1(openvpn_plugin_handle_t handle)
-{
+openvpn_plugin_client_constructor_v1(
+    openvpn_plugin_handle_t handle
+) {
     ArachnePlugin *plugin = reinterpret_cast<ArachnePlugin*>(handle);
     ClientSession *session = plugin->createClientSession();
 
@@ -87,9 +95,10 @@ openvpn_plugin_client_constructor_v1(openvpn_plugin_handle_t handle)
 }
 
 OPENVPN_EXPORT void
-openvpn_plugin_client_destructor_v1(openvpn_plugin_handle_t handle,
-                                    void *per_client_context)
-{
+openvpn_plugin_client_destructor_v1(
+    openvpn_plugin_handle_t handle,
+    void *per_client_context
+) {
     ClientSession *session = reinterpret_cast<ClientSession*>(per_client_context);
 
     delete session;
