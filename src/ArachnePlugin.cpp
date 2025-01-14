@@ -90,9 +90,9 @@ int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
     const std::string username(getEnv("username", envp));
     const std::string password(getEnv("password", envp));
 
-    Url url(_loginUrl);
     try {
-        session->loginUser(url, username, password);
+        session->loginUser(_loginUrl, username, password);
+        session->authUser(_authUrl);
     }
     catch (PluginException &ex) {
         session->logger().error() << ex.what() << std::flush;

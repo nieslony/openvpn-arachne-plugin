@@ -71,6 +71,7 @@ public:
         const std::string &username,
         const std::string &password
     );
+    void authUser(const Url &url);
     void verifyClientIp();
 
     void addUserFirewallRules();

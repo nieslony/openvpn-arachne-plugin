@@ -211,6 +211,16 @@ void ClientSession::loginUser(
     return;
 }
 
+void ClientSession::authUser(const Url &url)
+{
+    try {
+        doHttp(url, makeBearerAuth());
+    }
+    catch (HttpException &ex) {
+        throw PluginException("Authentication failed", ex.what());
+    }
+}
+
 void ClientSession::addUserFirewallRules()
 {
     _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
@@ -480,7 +490,7 @@ void ClientSession::readJson(
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());
     }
-    _logger.note() << "Got " << body << std::endl;
+    _logger.debug() << "Got " << body << std::endl;
 }
 
 std::string ClientSession::doHttp(
