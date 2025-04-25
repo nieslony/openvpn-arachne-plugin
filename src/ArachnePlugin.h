@@ -61,6 +61,9 @@ public:
 
     const std::string &interface() const { return _interface; }
 
+    const std::string &incomingPolicyName() const { return _incomingPolicyName; }
+    const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
@@ -82,6 +85,9 @@ private:
     std::string _firewallZoneName;
     std::string _clientConfig;
     std::string _interface;
+
+    std::string _incomingPolicyName;
+    std::string _outgoingPolicyName;
 
     const char* getEnv(const char* key, const char *envp[]);
     std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);

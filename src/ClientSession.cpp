@@ -250,7 +250,7 @@ void ClientSession::addUserFirewallRules()
     try {
         _logger.note() << "Getting current policy rich rules" << std::flush;
         std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
         std::map<std::string, sdbus::Variant> newPolicySettings;
         if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
             const std::vector<std::string> &rulesV(
@@ -265,7 +265,7 @@ void ClientSession::addUserFirewallRules()
             newPolicySettings["rich_rules"] =
                 std::vector<std::string>(_incomingForwardingRules.begin(),
                                          _incomingForwardingRules.end());
-        _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
+        _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
         throw PluginException(
@@ -277,7 +277,7 @@ void ClientSession::addUserFirewallRules()
     try {
         _logger.note() << "Adding Incoming rules" << std::flush;
         for (const std::string &rule : _incomingRules) {
-            _plugin.firewallZone().addRichRule("arachne", rule, FirewallD1::DEFAULT_TIMEOUT);
+            _plugin.firewallZone().addRichRule(_plugin.firewallZoneName(), rule, FirewallD1::DEFAULT_TIMEOUT);
         }
     }
     catch (const sdbus::Error &ex) {
