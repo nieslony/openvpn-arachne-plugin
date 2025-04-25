@@ -5,8 +5,8 @@ arachne_la_LDFLAGS = -module -avoid-version -shared
 arachne_la_LIBADD = -lboost_system -lboost_regex -lsdbus-c++
 arachne_la_SOURCES = \
         main.cpp \
-        ArachnePlugin.cpp \
         ArachneLogger.cpp \
+        ArachnePlugin.cpp \
         ClientSession.cpp \
         Config.cpp \
         FirewallD1.cpp \
