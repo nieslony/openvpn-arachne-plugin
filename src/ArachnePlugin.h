@@ -95,9 +95,9 @@ private:
 
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
-    void removeAllRichRules();
+    void removeAllRichRules(ClientSession *session);
 
-    void getLocalIpAddresses();
+    void getLocalIpAddresses(ClientSession *session);
 };
 
 #endif

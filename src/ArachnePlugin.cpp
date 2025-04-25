@@ -242,18 +242,20 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 {
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
-    session->logger().note() << "Plugin up..." << std::flush;
+    session->logger().note() << "Bringing plugin up..." << std::flush;
     setRouting(session);
     createFirewallZone(session);
-    removeAllRichRules();
-    getLocalIpAddresses();
+    removeAllRichRules(session);
+    getLocalIpAddresses(session);
+    session->logger().note() << "Plugin is up." << std::flush;
 }
 
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
-    session->logger() << "Plugin down..." << std::flush;
-    removeAllRichRules();
+    session->logger() << "Bringing plugin down..." << std::flush;
+    removeAllRichRules(session);
     restoreRouting(session);
+    session->logger() << "Plugin is down" << std::flush;
 }
 
 void ArachnePlugin::clientConnect(
@@ -298,10 +300,10 @@ void ArachnePlugin::clientDisconnect(
     session->removeRoutesToRemoteNetworks();
 }
 
-void ArachnePlugin::removeAllRichRules()
+void ArachnePlugin::removeAllRichRules(ClientSession*session)
 {
     if (_enableFirewall) {
-        _logger.note() << "Removing all rich rules" << std::flush;
+        session->logger().note() << "Removing all rich rules" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1_Zone firewallZone(connection);
         for (auto r : firewallZone.getRichRules(_firewallZoneName))
@@ -312,7 +314,7 @@ void ArachnePlugin::removeAllRichRules()
     }
 }
 
-void ArachnePlugin::getLocalIpAddresses()
+void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
 {
     struct ifaddrs* ptr_ifaddrs = nullptr;
     auto result = getifaddrs(&ptr_ifaddrs);
@@ -322,7 +324,7 @@ void ArachnePlugin::getLocalIpAddresses()
         throw PluginException(msg.str());
     }
 
-    _logger.note() << "Getting local IP addresses" << std::flush;
+    session->logger().note() << "Getting local IP addresses" << std::flush;
     for(
         struct ifaddrs* ptr_entry = ptr_ifaddrs;
         ptr_entry != nullptr;
@@ -347,7 +349,7 @@ void ArachnePlugin::getLocalIpAddresses()
         }
     }
     freeifaddrs(ptr_ifaddrs);
-    _logger.note()
+    session->logger().note()
         << "Local IP addresses: "
         << std::accumulate(
                 std::begin(_myIps),

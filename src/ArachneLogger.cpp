@@ -1,5 +1,6 @@
 #include "ArachneLogger.h"
 
+#include <openvpn-plugin.h>
 #include <sstream>
 
 ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId) :
@@ -35,6 +36,20 @@ void ArachneLogBuf::log(const char* msg, ...)
     s << "Arachne";
     if (_sessionId != -1)
         s << "_" << _sessionId;
+    switch (_level) {
+        case PLOG_ERR:
+            s << " ERROR";
+            break;
+        case PLOG_WARN:
+            s << " WARN";
+            break;
+        case PLOG_NOTE:
+            s << " NOTE";
+            break;
+        case PLOG_DEBUG:
+            s << " DEBUG";
+            break;
+    }
 
     _logFunc(_level, s.str().c_str(), msg, argptr);
 
