@@ -42,11 +42,11 @@ public:
     void restoreRouting(ClientSession*);
     void createFirewallZone(ClientSession*);
 
-    int userAuthPassword(const char *envp[], ClientSession*);
-    int pluginUp(const char *argv[], const char *envp[], ClientSession*) noexcept;
-    int pluginDown(const char *argv[], const char *envp[], ClientSession*) noexcept;
-    int clientConnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
-    int clientDisconnect(const char *argv[], const char *envp[], ClientSession*) noexcept;
+    void userAuthPassword(const char *envp[], ClientSession*);
+    void pluginUp(const char *argv[], const char *envp[], ClientSession*);
+    void pluginDown(const char *argv[], const char *envp[], ClientSession*);
+    void clientConnect(const char *argv[], const char *envp[], ClientSession*);
+    void clientDisconnect(const char *argv[], const char *envp[], ClientSession*);
 
     const std::string &firewallZoneName() { return _firewallZoneName; }
     const Url &firewallUrlUser() { return _firewallUrlUser; }

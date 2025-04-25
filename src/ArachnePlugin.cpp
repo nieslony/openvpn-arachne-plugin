@@ -88,21 +88,13 @@ const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
     throw PluginException(msg.str());
 }
 
-int ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
+void ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
 {
     const std::string username(getEnv("username", envp));
     const std::string password(getEnv("password", envp));
 
-    try {
-        session->loginUser(_loginUrl, username, password);
-        session->authUser(_authUrl);
-    }
-    catch (PluginException &ex) {
-        session->logger().error() << ex.what() << std::flush;
-        return OPENVPN_PLUGIN_FUNC_ERROR;
-    }
-
-    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+    session->loginUser(_loginUrl, username, password);
+    session->authUser(_authUrl);
 }
 
 void ArachnePlugin::readConfigFile(const char*filename)
@@ -240,14 +232,13 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                 << ex.getMessage()
                 ;
             throw PluginException(msg.str());
-
         }
     } else {
         _logger.note() << "Firewall is disabled" << std::flush;
     }
 }
 
-int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*session) noexcept
+void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*session)
 {
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
@@ -256,24 +247,20 @@ int ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessio
     createFirewallZone(session);
     removeAllRichRules();
     getLocalIpAddresses();
-
-    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
-int ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session) noexcept
+void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Plugin down..." << std::flush;
     removeAllRichRules();
     restoreRouting(session);
-
-    return OPENVPN_PLUGIN_FUNC_SUCCESS;
 }
 
-int ArachnePlugin::clientConnect(
+void ArachnePlugin::clientConnect(
     const char *argv[],
     const char *envp[],
     ClientSession*session
-) noexcept
+)
 {
     dumpEnv(session->logger().debug(), envp) << std::flush;
     session->commonName(getEnv("common_name", envp));
@@ -285,52 +272,30 @@ int ArachnePlugin::clientConnect(
         << std::endl << "  VPN IP: " << session->vpnIp()
         << std::flush;
 
-    try {
-        if (!_clientConfig.empty()) {
-            try {
-                session->readConfigFile(_clientConfig);
-                session->verifyClientIp();
-                session->addRoutesToRemoteNetworks();
-            }
-            catch (ConfigException &ex) {
-                session->logger().error() << ex.what() << std::endl;
-                return OPENVPN_PLUGIN_FUNC_ERROR;
-            }
-        }
-
-        if (_enableFirewall) {
-            session->updateEverybodyRules();
-            session->addUserFirewallRules();
-        }
-    }
-    catch (PluginException &ex) {
-        session->logger().error() << ex.what() << std::flush;
-        return OPENVPN_PLUGIN_FUNC_ERROR;
+    if (!_clientConfig.empty()) {
+        session->readConfigFile(_clientConfig);
+        session->verifyClientIp();
+        session->addRoutesToRemoteNetworks();
     }
 
-    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+    if (_enableFirewall) {
+        session->updateEverybodyRules();
+        session->addUserFirewallRules();
+    }
 }
 
-int ArachnePlugin::clientDisconnect(
+void ArachnePlugin::clientDisconnect(
     const char *argv[],
     const char *envp[],
     ClientSession* session
-) noexcept
+)
 {
     session->logger().note() << "Client " << session->commonName()
         << " from " << session->remoteIp()
         << " disconnected" << std::flush;
-    try {
-        if (_enableFirewall)
-            session->removeUserFirewalRules();
-        session->removeRoutesToRemoteNetworks();
-    }
-    catch (PluginException &ex) {
-        session->logger().error() << ex.what() << std::flush;
-        return OPENVPN_PLUGIN_FUNC_ERROR;
-    }
-
-    return OPENVPN_PLUGIN_FUNC_SUCCESS;
+    if (_enableFirewall)
+        session->removeUserFirewalRules();
+    session->removeRoutesToRemoteNetworks();
 }
 
 void ArachnePlugin::removeAllRichRules()
