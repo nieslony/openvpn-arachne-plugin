@@ -295,7 +295,7 @@ void ClientSession::removeUserFirewalRules()
     try {
         _logger.note() << "Getting current forwarding rich rules" << std::flush;
         std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
         std::map<std::string, sdbus::Variant> newPolicySettings;
         if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
             const std::vector<std::string> &rulesV(
@@ -312,7 +312,7 @@ void ClientSession::removeUserFirewalRules()
             std::map<std::string, sdbus::Variant> newPolicySettings;
             newPolicySettings["rich_rules"] =
                 std::vector<std::string>(rulesS.begin(), rulesS.end());
-            _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
+            _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
         }
         else
             _logger.note() << "There are no forwarding rich rules" << std::flush;
@@ -374,7 +374,7 @@ void ClientSession::updateEverybodyRules()
     try {
         _logger.note() << "Getting current rich rules" << std::flush;
         std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings("arachne-incoming");
+            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
         std::map<std::string, sdbus::Variant> newPolicySettings;
         if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
             const std::vector<std::string> &rulesV(policySettings.at(std::string("rich_rules")));
@@ -393,7 +393,7 @@ void ClientSession::updateEverybodyRules()
         else
             newPolicySettings["rich_rules"] =
                 std::vector<std::string>(newForwardingRules.begin(), newForwardingRules.end());
-        _plugin.firewallPolicy().setPolicySettings("arachne-incoming", newPolicySettings);
+        _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
     }
     catch (const sdbus::Error &ex) {
         throw PluginException("Cannot update rich rules", ex.what());
