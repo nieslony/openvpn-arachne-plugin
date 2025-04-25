@@ -42,8 +42,8 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
         _firewallUrlUser = _config.get("url-firewall-user");
         _firewallUrlEverybody = _config.get("url-firewall-everybody");
 
-        _incomingPolicyName = _firewallZoneName + "-incoming";
-        _outgoingPolicyName = _firewallZoneName + "-outgoing";
+        _incomingPolicyName = _firewallZoneName + "-in";
+        _outgoingPolicyName = _firewallZoneName + "-out";
     }
     _clientConfig = _config.get("client-config", "");
 }
