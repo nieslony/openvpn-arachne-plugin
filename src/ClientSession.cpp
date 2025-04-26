@@ -38,7 +38,11 @@ namespace net = boost::asio;        // from <boost/asio.hpp>
 namespace ssl = net::ssl;
 using tcp = net::ip::tcp;           // from <boost/asio/ip/tcp.hpp>
 
-ClientSession::ClientSession(ArachnePlugin &plugin, plugin_vlog_t logFunc, int sessionId)
+ClientSession::ClientSession(
+    ArachnePlugin &plugin,
+    plugin_vlog_t logFunc,
+    const std::string &sessionId
+)
     : _plugin(plugin), _logger(logFunc, sessionId), _sessionId(sessionId)
 {
     _logger.note() << "Creating Session " << _sessionId << std::flush;
@@ -188,6 +192,7 @@ void ClientSession::loginUser(
 ) {
     _username = username;
     std::string body;
+
     try
     {
         body = doHttp(url, makeBasicAuth(username, password));
@@ -206,8 +211,6 @@ void ClientSession::loginUser(
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());
     }
-
-    return;
 }
 
 void ClientSession::authUser(const Url &url)
@@ -249,16 +252,24 @@ void ClientSession::addUserFirewallRules()
     try {
         _logger.note() << "Getting current policy rich rules" << std::flush;
         std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
+            _plugin
+                .firewallPolicy()
+                .getPolicySettings(_plugin.incomingPolicyName());
         std::map<std::string, sdbus::Variant> newPolicySettings;
         if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
             const std::vector<std::string> &rulesV(
                 policySettings.at(std::string("rich_rules"))
             );
             std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            rulesS.insert(_incomingForwardingRules.begin(), _incomingForwardingRules.end());
+            rulesS.insert(
+                _incomingForwardingRules.begin(),
+                _incomingForwardingRules.end()
+            );
             newPolicySettings["rich_rules"] =
-                std::vector<std::string>(rulesS.begin(), rulesS.end());
+                std::vector<std::string>(
+                    rulesS.begin(),
+                    rulesS.end()
+            );
         }
         else
             newPolicySettings["rich_rules"] =
@@ -295,7 +306,9 @@ void ClientSession::removeUserFirewalRules()
     try {
         _logger.note() << "Getting current forwarding rich rules" << std::flush;
         std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
+            _plugin
+                .firewallPolicy()
+                .getPolicySettings(_plugin.incomingPolicyName());
         std::map<std::string, sdbus::Variant> newPolicySettings;
         if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
             const std::vector<std::string> &rulesV(
@@ -323,7 +336,9 @@ void ClientSession::removeUserFirewalRules()
 
     try {
         for (const std::string &rule : _incomingRules) {
-            _plugin.firewallZone().removeRichRule("arachne", rule);
+            _plugin
+                .firewallZone()
+                .removeRichRule(_plugin.firewallZoneName(), rule);
         }
     }
     catch (const sdbus::Error &ex) {

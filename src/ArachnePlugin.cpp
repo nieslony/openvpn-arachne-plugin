@@ -52,9 +52,28 @@ ArachnePlugin::~ArachnePlugin()
 {
 }
 
+std::string encodeSessionId(int id) {
+    static const std::string digits(
+        "01234567890"
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    );
+    static const int noDigits = digits.length();
+
+    std::string idString;
+    while (id > 0) {
+        idString = digits[id % noDigits] + idString;;
+        id /= noDigits;
+    }
+    return idString;
+}
+
 ClientSession *ArachnePlugin::createClientSession()
 {
-    return new ClientSession(*this, _logFunc, ++_lastSession);
+    _lastSession++;
+    if (_activeSessions.contains(_lastSession))
+        _lastSession++;
+    return new ClientSession(*this, _logFunc, encodeSessionId(_lastSession));
 }
 
 std::ostream &ArachnePlugin::dumpEnv(std::ostream &os, const char *envp[])
@@ -88,7 +107,7 @@ const char* ArachnePlugin::getEnv(const char* key, const char *envp[])
     throw PluginException(msg.str());
 }
 
-void ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
+void ArachnePlugin::onUserAuthPassword(const char *envp[], ClientSession* session)
 {
     const std::string username(getEnv("username", envp));
     const std::string password(getEnv("password", envp));
@@ -238,7 +257,7 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
     }
 }
 
-void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSession*session)
+void ArachnePlugin::onPluginUp(const char *argv[], const char *envp[], ClientSession*session)
 {
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
@@ -250,7 +269,7 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     session->logger().note() << "Plugin is up." << std::flush;
 }
 
-void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
+void ArachnePlugin::onPluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Bringing plugin down..." << std::flush;
     removeAllRichRules(session);
@@ -258,7 +277,7 @@ void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSes
     session->logger() << "Plugin is down" << std::flush;
 }
 
-void ArachnePlugin::clientConnect(
+void ArachnePlugin::onClientConnect(
     const char *argv[],
     const char *envp[],
     ClientSession*session
@@ -286,7 +305,7 @@ void ArachnePlugin::clientConnect(
     }
 }
 
-void ArachnePlugin::clientDisconnect(
+void ArachnePlugin::onClientDisconnect(
     const char *argv[],
     const char *envp[],
     ClientSession* session
@@ -305,12 +324,17 @@ void ArachnePlugin::removeAllRichRules(ClientSession*session)
     if (_enableFirewall) {
         session->logger().note() << "Removing all rich rules" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
+
+        std::vector<std::string> emptyRules;
+        std::map<std::string, sdbus::Variant> settings;
+        settings["rich_rules"] = emptyRules;
+
         FirewallD1_Zone firewallZone(connection);
-        for (auto r : firewallZone.getRichRules(_firewallZoneName))
-        {
-            _logger.note() << "Removing rich rule " << r << std::flush;
-            firewallZone.removeRichRule(_firewallZoneName, r);
-        }
+        firewallZone.setZoneSettings2(firewallZoneName(), settings);
+
+        FirewallD1_Policy policy(connection);
+        policy.setPolicySettings(incomingPolicyName(), settings);
+        policy.setPolicySettings(outgoingPolicyName(), settings);
     }
 }
 

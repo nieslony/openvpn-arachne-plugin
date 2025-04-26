@@ -52,7 +52,11 @@ private:
 class ClientSession
 {
 public:
-    ClientSession(ArachnePlugin &plugin, plugin_vlog_t logFunc, int sessionid);
+    ClientSession(
+        ArachnePlugin &plugin,
+        plugin_vlog_t logFunc,
+        const std::string &sessionid
+    );
     ~ClientSession();
 
     void readConfigFile(const std::string &filename);
@@ -86,7 +90,7 @@ public:
 private:
     ArachnePlugin &_plugin;
     ArachneLogger _logger;
-    int _sessionId;
+    std::string _sessionId;
     std::string _username;
     std::string _apiToken;
     std::set<std::string> _incomingForwardingRules;
