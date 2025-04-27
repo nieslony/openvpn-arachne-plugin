@@ -42,11 +42,11 @@ public:
     void restoreRouting(ClientSession*);
     void createFirewallZone(ClientSession*);
 
-    void onUserAuthPassword(const char *envp[], ClientSession*);
-    void onPluginUp(const char *argv[], const char *envp[], ClientSession*);
-    void onPluginDown(const char *argv[], const char *envp[], ClientSession*);
-    void onClientConnect(const char *argv[], const char *envp[], ClientSession*);
-    void onClientDisconnect(const char *argv[], const char *envp[], ClientSession*);
+    void userAuthPassword(const char *envp[], ClientSession*);
+    void pluginUp(const char *argv[], const char *envp[], ClientSession*);
+    void pluginDown(const char *argv[], const char *envp[], ClientSession*);
+    void clientConnect(const char *argv[], const char *envp[], ClientSession*);
+    void clientDisconnect(const char *argv[], const char *envp[], ClientSession*);
 
     const std::string &firewallZoneName() { return _firewallZoneName; }
     const Url &firewallUrlUser() { return _firewallUrlUser; }
@@ -62,13 +62,12 @@ public:
     const std::string &interface() const { return _interface; }
 
     const std::string &incomingPolicyName() const { return _incomingPolicyName; }
-    const std::string &outgoingPolicyName() const { return _outgoingPolicyName; }
+    const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
 
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
-    std::set<int> _activeSessions;
-    int _lastSession = 0;
+    int _lastSession;
     Config _config;
 
     std::unique_ptr<sdbus::IConnection> _dbusConnection;
@@ -99,7 +98,6 @@ private:
     void removeAllRichRules(ClientSession *session);
 
     void getLocalIpAddresses(ClientSession *session);
-    std::string encodeSessionId(int id);
 };
 
 #endif

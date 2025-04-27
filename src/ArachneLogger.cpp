@@ -3,7 +3,7 @@
 #include <openvpn-plugin.h>
 #include <sstream>
 
-ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, const std::string &sessionId) :
+ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId) :
     _logFunc(log_func),
     _sessionId(sessionId),
     _level(PLOG_NOTE)
@@ -34,7 +34,7 @@ void ArachneLogBuf::log(const char* msg, ...)
 
     std::stringstream s;
     s << "Arachne";
-    if (_sessionId.empty())
+    if (_sessionId != -1)
         s << "_" << _sessionId;
     switch (_level) {
         case PLOG_ERR:
@@ -49,9 +49,6 @@ void ArachneLogBuf::log(const char* msg, ...)
         case PLOG_DEBUG:
             s << " DEBUG";
             break;
-        case PLOG_ERRNO:
-        case PLOG_NOMUTE:
-            break;
     }
 
     _logFunc(_level, s.str().c_str(), msg, argptr);
@@ -59,7 +56,7 @@ void ArachneLogBuf::log(const char* msg, ...)
     va_end(argptr);
 }
 
-ArachneLogger::ArachneLogger(plugin_vlog_t logFunc, const std::string &sessionId) :
+ArachneLogger::ArachneLogger(plugin_vlog_t logFunc, int sessionId) :
     std::ostream(&_buf),
     _buf(logFunc, sessionId)
 {

@@ -72,19 +72,19 @@ openvpn_plugin_func_v3(
     try {
         switch (args->type) {
             case OPENVPN_PLUGIN_AUTH_USER_PASS_VERIFY:
-                plugin->onUserAuthPassword(args->envp, session);
+                plugin->userAuthPassword(args->envp, session);
                 break;
             case OPENVPN_PLUGIN_UP:
-                plugin->onPluginUp(args->argv, args->envp, session);
+                plugin->pluginUp(args->argv, args->envp, session);
                 break;
             case OPENVPN_PLUGIN_DOWN:
-                plugin->onPluginDown(args->argv, args->envp, session);
+                plugin->pluginDown(args->argv, args->envp, session);
                 break;
             case OPENVPN_PLUGIN_CLIENT_CONNECT_V2:
-                plugin->onClientConnect(args->argv, args->envp, session);
+                plugin->clientConnect(args->argv, args->envp, session);
                 break;
             case OPENVPN_PLUGIN_CLIENT_DISCONNECT:
-                plugin->onClientDisconnect(args->argv, args->envp, session);
+                plugin->clientDisconnect(args->argv, args->envp, session);
                 break;
         }
 
