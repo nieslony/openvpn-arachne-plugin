@@ -323,7 +323,7 @@ void ClientSession::removeUserFirewalRules()
 
     try {
         for (const std::string &rule : _incomingRules) {
-            _plugin.firewallZone().removeRichRule("arachne", rule);
+            _plugin.firewallZone().removeRichRule(_plugin.firewallZoneName(), rule);
         }
     }
     catch (const sdbus::Error &ex) {
