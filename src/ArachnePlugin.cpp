@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <fstream>
 #include <openvpn-plugin.h>
+#include <sdbus-c++/Types.h>
 #include <sstream>
 #include <numeric>
 
@@ -305,12 +306,17 @@ void ArachnePlugin::removeAllRichRules(ClientSession*session)
     if (_enableFirewall) {
         session->logger().note() << "Removing all rich rules" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
+
         FirewallD1_Zone firewallZone(connection);
-        for (auto r : firewallZone.getRichRules(_firewallZoneName))
-        {
-            _logger.note() << "Removing rich rule " << r << std::flush;
-            firewallZone.removeRichRule(_firewallZoneName, r);
+        for (std::string rule :firewallZone.getRichRules(firewallZoneName())) {
+            firewallZone.removeRichRule(firewallZoneName(), rule);
         }
+
+        std::vector<std::string> emptyList;
+        std::map<std::string, sdbus::Variant> settings;
+        settings["rich_rules"] = emptyList;
+        FirewallD1_Policy firewallPolicy(connection);
+        firewallPolicy.setPolicySettings(incomingPolicyName(), settings);
     }
 }
 
@@ -324,7 +330,7 @@ void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
         throw PluginException(msg.str());
     }
 
-    session->logger().note() << "Getting local IP addresses" << std::flush;
+    session->logger().debug() << "Getting local IP addresses" << std::flush;
     for(
         struct ifaddrs* ptr_entry = ptr_ifaddrs;
         ptr_entry != nullptr;
