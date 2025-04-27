@@ -52,7 +52,7 @@ ArachnePlugin::~ArachnePlugin()
 {
 }
 
-std::string ArachnePlugin::encodeSessionId(int id) {
+std::string encodeSessionId(int id) {
     static const std::string digits(
         "01234567890"
         "abcdefghijklmnopqrstuvwxyz"
