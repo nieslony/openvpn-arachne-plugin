@@ -222,6 +222,11 @@ void ClientSession::authUser(const Url &url)
 
 void ClientSession::addUserFirewallRules()
 {
+    if (_plugin.firewallUrlUser().empty()) {
+        _logger.note() << "No url-firewall-user specified, skipping user firewall rules";
+        return;
+    }
+
     _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
     boost::property_tree::ptree json;
     readJson(_plugin.firewallUrlUser(), json);
@@ -333,6 +338,11 @@ void ClientSession::removeUserFirewalRules()
 
 void ClientSession::updateEverybodyRules()
 {
+    if (_plugin.firewallUrlEverybody().empty()) {
+        _logger.note() << "No url-firewall-everybody specified, skipping everybody firewall rules";
+        return;
+    }
+
     _logger.note() << "Updating everybody rules" << std::flush;
     boost::property_tree::ptree json;
     readJson(_plugin.firewallUrlEverybody(), json);
