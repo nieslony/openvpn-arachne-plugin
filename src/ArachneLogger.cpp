@@ -38,7 +38,7 @@ void ArachneLogBuf::log(const char* msg, ...)
         s << "_" << _sessionId;
     switch (_level) {
         case PLOG_ERR:
-            s << " ERROR";
+            s << " ERRR";
             break;
         case PLOG_WARN:
             s << " WARN";
@@ -47,7 +47,7 @@ void ArachneLogBuf::log(const char* msg, ...)
             s << " NOTE";
             break;
         case PLOG_DEBUG:
-            s << " DEBUG";
+            s << " DEBG";
             break;
     }
 

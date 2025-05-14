@@ -6,9 +6,12 @@
 #include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 #include <cerrno>
 #include <fstream>
 #include <openvpn-plugin.h>
+#include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <sstream>
 #include <numeric>
@@ -40,6 +43,7 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _enableFirewall = _config.getBool("enable-firewall", false);
     if (_enableFirewall) {
         _firewallZoneName = _config.get("firewall-zone");
+        _firewallRulesPath = _config.get("firewall-rules");
         _firewallUrlUser = _config.get("url-firewall-user", "");
         _firewallUrlEverybody = _config.get("url-firewall-everybody", "");
 
@@ -169,6 +173,7 @@ void ArachnePlugin::restoreRouting(ClientSession *session)
 void ArachnePlugin::createFirewallZone(ClientSession *session)
 {
     if (_enableFirewall) {
+        session->logger().note() << "Preparing firewall zone " <<_firewallZoneName << std::flush;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1 firewall(connection);
         FirewallD1_Config firewallConfig(connection);
@@ -181,7 +186,7 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
             )
             ) {
                 session->logger().note()
-                    << "Firewall Zone '" << _firewallZoneName << "' already exists"
+                    << "  Firewall Zone '" << _firewallZoneName << "' already exists"
                     << std::flush;
             }
             else {
@@ -205,12 +210,12 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                 )
                 ) {
                     session->logger().note()
-                        << "Firewall Policy '" << pname << "' already exists"
+                        << "  Firewall Policy '" << pname << "' already exists"
                         << std::flush;
                 }
                 else {
                     session->logger().note()
-                        << "Creating firewall policy '" << pname << "'"
+                        << "  Creating firewall policy '" << pname << "'"
                         << std::flush;
                     std::map<std::string, sdbus::Variant> settings;
                     settings["ingress_zones"] = std::vector<std::string> ({
@@ -246,7 +251,8 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     session->logger().note() << "Bringing plugin up..." << std::flush;
     setRouting(session);
     createFirewallZone(session);
-    removeAllRichRules(session);
+    cleanupPolicies(session);
+    loadFirewallRules(session);
     getLocalIpAddresses(session);
     session->logger().note() << "Plugin is up." << std::flush;
 }
@@ -254,7 +260,7 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Bringing plugin down..." << std::flush;
-    removeAllRichRules(session);
+    cleanupPolicies(session);
     restoreRouting(session);
     session->logger() << "Plugin is down" << std::flush;
 }
@@ -301,22 +307,191 @@ void ArachnePlugin::clientDisconnect(
     session->removeRoutesToRemoteNetworks();
 }
 
-void ArachnePlugin::removeAllRichRules(ClientSession*session)
+void ArachnePlugin::cleanupPolicies(ClientSession*session)
 {
     if (_enableFirewall) {
-        session->logger().note() << "Removing all rich rules" << std::flush;
+        session->logger().note() << "Cleaning up firewall policies for zone '" <<_firewallZoneName << "'" << std::flush;
         auto connection = sdbus::createSystemBusConnection();
+        FirewallD1 firewall(connection);
+        FirewallD1_Config firewallConfig(connection);
 
-        FirewallD1_Zone firewallZone(connection);
-        for (std::string rule :firewallZone.getRichRules(firewallZoneName())) {
-            firewallZone.removeRichRule(firewallZoneName(), rule);
-        }
-
-        std::vector<std::string> emptyList;
         std::map<std::string, sdbus::Variant> settings;
-        settings["rich_rules"] = emptyList;
+        std::vector<std::string> noEntries;
+        settings["rich_rules"] = noEntries;
         FirewallD1_Policy firewallPolicy(connection);
         firewallPolicy.setPolicySettings(incomingPolicyName(), settings);
+
+        for (std::string policyName: firewallConfig.getPolicyNames()) {
+            if (policyName.starts_with(_firewallZoneName)) {
+                session->logger().note() << "  Removing all rich rules from policy '" << policyName << "'" << std::flush;
+                std::vector<std::string> emptyList;
+                std::map<std::string, sdbus::Variant> settings;
+                settings["rich_rules"] = emptyList;
+
+                auto policyPath = firewallConfig.getPolicyByName(policyName);
+                auto policyProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(policyPath));
+                policyProxy->callMethod("update")
+                    .onInterface("org.fedoraproject.FirewallD1.config.policy")
+                    .withArguments(settings);
+            }
+            else {
+                session->logger().debug() << "  Ignoring policy '" << policyName << "'" << std::flush;
+            }
+        }
+
+        auto ipSetNames = firewallConfig.getIPSetNames();
+        session->logger().note() << "  Removing " << ipSetNames.size() << " IP sets" << std::flush;
+        for (std::string ipSetName: ipSetNames) {
+            if (ipSetName.starts_with(_firewallZoneName)) {
+                session->logger().debug() << "  Removing IP set " << ipSetName << std::flush;
+                auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
+                auto ipSetProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(ipSetPath));
+                ipSetProxy->callMethod("remove")
+                    .onInterface("org.fedoraproject.FirewallD1.config.ipset");
+            }
+        }
+    }
+}
+
+void ArachnePlugin::createRichRules(
+    boost::property_tree::ptree &ptree,
+    std::vector<std::string> &richRules,
+    std::map<std::string, std::vector<std::string>> &ipSets,
+    ClientSession *session
+)
+{
+    for (auto &[_, value] : ptree) {
+        int id = value.get<int>("id");
+
+        auto srcList = value.get_child_optional("sources");
+        std::vector<std::string> sources;
+        if (srcList.has_value())
+            for (auto &[_, src]: srcList.value())
+                sources.push_back(src.get_value<std::string>());
+
+        auto dstList = value.get_child_optional("destination");
+        std::vector<std::string> destination;
+        if (dstList.has_value())
+            for (auto &[_, dst]: dstList.value())
+                destination.push_back(dst.get_value<std::string>());
+
+        std::stringstream ipSetSrcName;
+        std::stringstream ipSetDstName;
+        ipSetSrcName << "arachne-user-" << id << "-src";
+        ipSetDstName << "arachne-user-" << id << "-dst";
+
+        auto srvList = value.get_child_optional("services");
+        if (srvList.has_value()) {
+            for (auto &[_, srv]: srvList.value()) {
+                std::stringstream richrule;
+                richrule << "rule family=\"ipv4\" ";
+                if (srcList.has_value()) {
+                    richrule << "source ipset=\"" << ipSetSrcName.str() << "\" ";
+                    ipSets[ipSetSrcName.str()] = sources;
+                }
+                if (dstList.has_value()) {
+                    richrule << "destination ipset=\"" <<ipSetDstName.str() << "\" ";
+                    ipSets[ipSetDstName.str()] = destination;
+                }
+                richrule << "service name=\"" << srv.get_value<std::string>() << "\" ";
+                richrule << "accept";
+                richRules.push_back(richrule.str());
+                session->logger().debug() << "  Add rich rule '" << richrule.str() << "'" << std::flush;
+            }
+        }
+        auto prtList = value.get_child_optional("ports");
+        if (prtList.has_value()) {
+            for (auto &[_, prt]: prtList.value()) {
+                std::vector<std::string> splitPort;
+                boost::split(splitPort, prt.get_value<std::string>(), boost::is_any_of("/"));
+
+                std::stringstream richrule;
+                richrule << "rule family=\"ipv4\" ";
+                if (srcList.has_value()) {
+                    richrule << "source ipset=\"" << ipSetSrcName.str() << "\" ";
+                    ipSets[ipSetSrcName.str()] = sources;
+                }
+                if (dstList.has_value()) {
+                    richrule << "destination ipset=\"" <<ipSetDstName.str() << "\" ";
+                    ipSets[ipSetDstName.str()] = destination;
+                }
+                richrule << "port "
+                 << "port=\"" << splitPort[0] << "\" "
+                 << "protocol=\"" <<splitPort[1] << "\" ";
+                richrule << "accept";
+                richRules.push_back(richrule.str());
+                session->logger().debug() << "  Add rich rule '" << richrule.str() << "'" << std::flush;
+            }
+        }
+    }
+}
+
+void ArachnePlugin::loadFirewallRules(ClientSession *session)
+{
+    session->logger().note() << "Loading firewall rules" << std::flush;
+    unsigned noIncomingRules = 0;
+    unsigned noOutgoingRules = 0;
+    unsigned noIncomingRichRules = 0;
+    unsigned noOutgoingRichRules = 0;
+    try {
+        std::ifstream ifs;
+        ifs.open (_firewallRulesPath, std::ifstream::in);
+        boost::property_tree::ptree pt;
+        boost::property_tree::read_json(ifs, pt);
+        ifs.close();
+
+        std::vector<std::string> incomingRichRules;
+        std::vector<std::string> outgoingRichRules;
+        std::map<std::string, std::vector<std::string>> ipSets;
+        auto incomingRules = pt.get_child("incoming");
+        auto outgoingRules = pt.get_child("outgoing");
+        createRichRules(incomingRules, incomingRichRules, ipSets, session);
+        createRichRules(outgoingRules, outgoingRichRules, ipSets, session);
+
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_Config firewallConfig(connection);
+
+        for (auto &[name, entries]: ipSets) {
+            sdbus::Struct<
+                std::string, // version
+                std::string, // name
+                std::string, // description
+                std::string, // type
+                std::map<std::string, std::string>, // options
+                std::vector<std::string> // entries
+            > settings{ "1", name, "", "hash:ip", {}, entries};
+            session->logger().debug() << "  Adding IPSet " << name << std::flush;
+            firewallConfig.addIPSet(name, settings);
+        }
+        session->logger().note() << "  " << ipSets.size() << " IP sets added." << std::flush;
+
+        auto outgoingPath = firewallConfig.getPolicyByName(_outgoingPolicyName);
+        auto outgoingProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(outgoingPath));
+        std::map<std::string, sdbus::Variant> outgoingSettings;
+        outgoingSettings["rich_rules"] = outgoingRichRules;
+        outgoingProxy->callMethod("update")
+            .onInterface("org.fedoraproject.FirewallD1.config.policy")
+        .   withArguments(outgoingSettings);
+
+        auto incomingPath = firewallConfig.getPolicyByName(_incomingPolicyName);
+        auto incomingProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(incomingPath));
+        std::map<std::string, sdbus::Variant> incomingSettings;
+        incomingSettings["rich_rules"] = incomingRichRules;
+        incomingProxy->callMethod("update")
+            .onInterface("org.fedoraproject.FirewallD1.config.policy")
+            .withArguments(incomingSettings);
+
+        session->logger().note()
+            << "  "
+            << incomingRules.size() << " incoming rules with " << incomingRichRules.size() << " resulting rich rules, "
+            << outgoingRules.size() << " outgoung rules with " << outgoingRichRules.size() << " resulting rich rules "
+            << "added."
+            << std::flush;
+    }
+    catch (std::exception &ex) {
+        std::stringstream str;
+        str << "Error reading " << _firewallRulesPath << ": " << ex.what();
+        throw PluginException(str.str());
     }
 }
 

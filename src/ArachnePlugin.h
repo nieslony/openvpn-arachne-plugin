@@ -6,6 +6,8 @@
 #include <sstream>
 #include <stdio.h>
 #include <set>
+#include <list>
+#include <boost/property_tree/ptree.hpp>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -83,6 +85,7 @@ private:
     std::string _enableRouting;
     bool _enableFirewall;
     std::string _firewallZoneName;
+    std::string _firewallRulesPath;
     std::string _clientConfig;
     std::string _interface;
 
@@ -95,8 +98,15 @@ private:
 
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
-    void removeAllRichRules(ClientSession *session);
+    void cleanupPolicies(ClientSession *session);
+    void loadFirewallRules(ClientSession *session);
 
+    void createRichRules(
+        boost::property_tree::ptree &ptree,
+        std::vector<std::string> &richRules,
+        std::map<std::string, std::vector<std::string>> &ipSets,
+        ClientSession *session
+    );
     void getLocalIpAddresses(ClientSession *session);
 };
 
