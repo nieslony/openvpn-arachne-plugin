@@ -52,7 +52,6 @@ public:
 
     const std::string &firewallZoneName() { return _firewallZoneName; }
     const Url &firewallUrlUser() { return _firewallUrlUser; }
-    const Url &firewallUrlEverybody() { return _firewallUrlEverybody; }
     const std::set<std::string> &myIps() { return _myIps; }
 
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
@@ -65,6 +64,9 @@ public:
 
     const std::string &incomingPolicyName() const { return _incomingPolicyName; }
     const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
+
+    std::string ipSetNameSrc(long id) const;
+    std::string ipSetNameDst(long id) const;
 
 private:
     ArachneLogger _logger;
@@ -79,7 +81,6 @@ private:
     Url _loginUrl;
     Url _authUrl;
     Url _firewallUrlUser;
-    Url _firewallUrlEverybody;
     std::set<std::string> _myIps;
     std::string _savedIpForward;
     std::string _enableRouting;
@@ -100,9 +101,11 @@ private:
     void setRoutingStatus(const std::string&);
     void cleanupPolicies(ClientSession *session);
     void loadFirewallRules(ClientSession *session);
+    void applyPermentRulesToRuntime(ClientSession *session);
 
     void createRichRules(
-        boost::property_tree::ptree &ptree,
+        const boost::property_tree::ptree &ptree,
+        const std::string icmpRules,
         std::vector<std::string> &richRules,
         std::map<std::string, std::vector<std::string>> &ipSets,
         ClientSession *session

@@ -74,9 +74,8 @@ public:
     void authUser(const Url &url);
     void verifyClientIp();
 
-    void addUserFirewallRules();
-    void removeUserFirewalRules();
-    void updateEverybodyRules();
+    void addVpnIpToIpSets();
+    void removeVpnIpFromIpSets();
 
     void addRoutesToRemoteNetworks();
     void removeRoutesToRemoteNetworks();
@@ -89,8 +88,8 @@ private:
     int _sessionId;
     std::string _username;
     std::string _apiToken;
-    std::set<std::string> _incomingForwardingRules;
-    std::set<std::string> _incomingRules;
+    std::vector<long> _incomingIds;
+    std::vector<long> _outgoingIds;
     IcmpRules _icmpRules;
     std::string _commonName;
     bool _verifyIpDns;

@@ -220,7 +220,7 @@ void ClientSession::authUser(const Url &url)
     }
 }
 
-void ClientSession::addUserFirewallRules()
+void ClientSession::addVpnIpToIpSets()
 {
     if (_plugin.firewallUrlUser().empty()) {
         _logger.note() << "No url-firewall-user specified, skipping user firewall rules";
@@ -231,185 +231,57 @@ void ClientSession::addUserFirewallRules()
     boost::property_tree::ptree json;
     readJson(_plugin.firewallUrlUser(), json);
 
-    try {
-        BOOST_FOREACH(
-            boost::property_tree::ptree::value_type &v, json
-        ) {
-            insertRichRules(v, _incomingForwardingRules, _incomingRules, vpnIp());
-        }
+    for (auto &[_, id]: json.get_child("incoming")) {
+        _incomingIds.push_back(id.get_value<long>());
     }
-    catch (boost::property_tree::ptree_bad_path &ex) {
-        throw PluginException(
-            "Invalid firewall rules",
-            ex.what()
-        );
-    }
-    _logger.note() << _username << "'s forwarding rules:" << std::flush;
-    for (auto r : _incomingForwardingRules)
-        _logger.note() << r << std::flush;
-    _logger.note() << _username << "'s incoming rules:" << std::flush;
-    for (auto r : _incomingRules)
-        _logger.note() << r << std::flush;
-
-    try {
-        _logger.note() << "Getting current policy rich rules" << std::flush;
-        std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
-        std::map<std::string, sdbus::Variant> newPolicySettings;
-        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
-            const std::vector<std::string> &rulesV(
-                policySettings.at(std::string("rich_rules"))
-            );
-            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            rulesS.insert(_incomingForwardingRules.begin(), _incomingForwardingRules.end());
-            newPolicySettings["rich_rules"] =
-                std::vector<std::string>(rulesS.begin(), rulesS.end());
-        }
-        else
-            newPolicySettings["rich_rules"] =
-                std::vector<std::string>(_incomingForwardingRules.begin(),
-                                         _incomingForwardingRules.end());
-        _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
-    }
-    catch (const sdbus::Error &ex) {
-        throw PluginException(
-            "Cannot update incoming policy rich rules",
-            ex.what()
-        );
+    for (auto &[_, id]: json.get_child("outgoing")) {
+        _outgoingIds.push_back(id.get_value<long>());
     }
 
     try {
-        _logger.note() << "Adding Incoming rules" << std::flush;
-        for (const std::string &rule : _incomingRules) {
-            _plugin.firewallZone().addRichRule(_plugin.firewallZoneName(), rule, FirewallD1::DEFAULT_TIMEOUT);
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_IpSet firewallIpSet(connection);
+        for (long id: _incomingIds) {
+            firewallIpSet.addEntry(_plugin.ipSetNameSrc(id), _vpnIp);
+        }
+        for (long id: _outgoingIds) {
+            firewallIpSet.addEntry(_plugin.ipSetNameDst(id), _vpnIp);
         }
     }
     catch (const sdbus::Error &ex) {
-        throw PluginException(
-            "Cannot update incoming rich rules",
-            ex.what()
-        );
+        throw PluginException("Cannot update IP set", ex.what());
     }
 
-    _logger.note() << _username << "'s rich rules updated" << std::flush;
+    _logger.note() << "  "
+        << _username << "'s rich rules updated: "
+        << _incomingIds.size() << " incoming rule, "
+        << _outgoingIds.size() << " outgoing rules"
+        << std::flush;
 }
 
-void ClientSession::removeUserFirewalRules()
+void ClientSession::removeVpnIpFromIpSets()
 {
-    _logger.note() << "Removing " << _username << "'s rich rules" << std::flush;
-    try {
-        _logger.note() << "Getting current forwarding rich rules" << std::flush;
-        std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
-        std::map<std::string, sdbus::Variant> newPolicySettings;
-        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
-            const std::vector<std::string> &rulesV(
-                policySettings.at(std::string("rich_rules"))
-            );
-            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            for (auto it=_incomingForwardingRules.begin();
-                 it != _incomingForwardingRules.end();
-                 it++
-            ) {
-                _logger.note() << "Removing rule " << *it << std::flush;
-                rulesS.erase(*it);
-            }
-            std::map<std::string, sdbus::Variant> newPolicySettings;
-            newPolicySettings["rich_rules"] =
-                std::vector<std::string>(rulesS.begin(), rulesS.end());
-            _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
-        }
-        else
-            _logger.note() << "There are no forwarding rich rules" << std::flush;
-    }
-    catch (const sdbus::Error &ex) {
-        throw PluginException("Cannot update forwarding rich rules: ", ex.what());
-    }
+    _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
 
     try {
-        for (const std::string &rule : _incomingRules) {
-            _plugin.firewallZone().removeRichRule(_plugin.firewallZoneName(), rule);
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_IpSet firewallIpSet(connection);
+        for (long id: _incomingIds) {
+            firewallIpSet.removeEntry(_plugin.ipSetNameSrc(id), _vpnIp);
+        }
+        for (long id: _outgoingIds) {
+            firewallIpSet.removeEntry(_plugin.ipSetNameDst(id), _vpnIp);
         }
     }
     catch (const sdbus::Error &ex) {
         throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }
-}
 
-void ClientSession::updateEverybodyRules()
-{
-    if (_plugin.firewallUrlEverybody().empty()) {
-        _logger.note() << "No url-firewall-everybody specified, skipping everybody firewall rules";
-        return;
-    }
-
-    _logger.note() << "Updating everybody rules" << std::flush;
-    boost::property_tree::ptree json;
-    readJson(_plugin.firewallUrlEverybody(), json);
-
-    std::set<std::string> newForwardingRules;
-    std::set<std::string> newLocalRules;
-    try {
-        std::string icmpRules = json.get<std::string>("icmpRules");
-        _logger.note() << "ICMP rules: " << icmpRules << std::flush;
-        if (icmpRules == "ALLOW_ALL") {
-            newForwardingRules.insert("rule icmp-type name=\"echo-reply\" accept");
-            newForwardingRules.insert("rule icmp-type name=\"echo-request\" accept");
-            _icmpRules = ALLOW_ALL;
-        }
-        else if (icmpRules == "DENY") {
-            _icmpRules = DENY;
-        }
-        else if (icmpRules == "ALLOW_ALL_GRANTED") {
-            _icmpRules = ALLOW_ALL_GRANTED;
-        }
-        else {
-            throw PluginException("Invalid value of icmpRules: ", icmpRules);
-        }
-
-        BOOST_FOREACH(
-            boost::property_tree::ptree::value_type &v,
-            json.get_child("richRules")
-        ) {
-            insertRichRules(v, newForwardingRules, newLocalRules);
-        }
-    }
-    catch (boost::property_tree::ptree_bad_path &ex) {
-        throw PluginException("Invalid firewall rules", ex.what());
-    }
-    _logger.note() << "Everybody rules:" << std::flush;
-    for (auto r : newForwardingRules)
-        _logger.note() << r << std::flush;
-
-    try {
-        _logger.note() << "Getting current rich rules" << std::flush;
-        std::map<std::string, sdbus::Variant> policySettings =
-            _plugin.firewallPolicy().getPolicySettings(_plugin.incomingPolicyName());
-        std::map<std::string, sdbus::Variant> newPolicySettings;
-        if (policySettings.find(std::string("rich_rules")) != policySettings.end()) {
-            const std::vector<std::string> &rulesV(policySettings.at(std::string("rich_rules")));
-            std::set<std::string> rulesS(rulesV.begin(), rulesV.end());
-            std::erase_if(rulesS, [newForwardingRules] (std::string r) {
-                return
-                    r.find("source address") == std::string::npos
-                    &&
-                    newForwardingRules.find(r) == newForwardingRules.end()
-                    ;
-            });
-            rulesS.merge(newForwardingRules);
-            newPolicySettings["rich_rules"] =
-                std::vector<std::string>(rulesS.begin(), rulesS.end());
-        }
-        else
-            newPolicySettings["rich_rules"] =
-                std::vector<std::string>(newForwardingRules.begin(), newForwardingRules.end());
-        _plugin.firewallPolicy().setPolicySettings(_plugin.incomingPolicyName(), newPolicySettings);
-    }
-    catch (const sdbus::Error &ex) {
-        throw PluginException("Cannot update rich rules", ex.what());
-    }
-
-    _logger.note() << "Everybody rich rules updated" << std::flush;
+    _logger.note() << "  "
+        << _username << "'s rich rules updated: "
+        << _incomingIds.size() << " incoming rule, "
+        << _outgoingIds.size() << " outgoing rules"
+        << std::flush;
 }
 
 void ClientSession::insertRichRules(
@@ -480,7 +352,7 @@ void ClientSession::readJson(
     const Url &url,
     boost::property_tree::ptree &json
 ) {
-    _logger.note() << "Getting rules from " << url.str() << std::flush;
+    _logger.note() << "  Getting rules from " << url.str() << std::flush;
     std::string body;
 
     try {

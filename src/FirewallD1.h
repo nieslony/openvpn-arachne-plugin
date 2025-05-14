@@ -56,6 +56,26 @@ protected:
     void onHelperAdded(const std::string&) {}
 };
 
+class FirewallD1_IpSet
+    : public sdbus::ProxyInterfaces<org::fedoraproject::FirewallD1::ipset_proxy>
+{
+public:
+    FirewallD1_IpSet(std::unique_ptr<sdbus::IConnection> &connection)
+    : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+    {
+        registerProxy();
+    }
+
+    ~FirewallD1_IpSet()
+    {
+        unregisterProxy();
+    }
+
+protected:
+    virtual void onEntryAdded(const std::string& ipset, const std::string& entry) {}
+    virtual void onEntryRemoved(const std::string& ipset, const std::string& entry)  {}
+};
+
 class FirewallD1_Zone
     : public sdbus::ProxyInterfaces<org::fedoraproject::FirewallD1::zone_proxy>
 {
