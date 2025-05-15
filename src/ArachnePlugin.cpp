@@ -48,6 +48,8 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
 
         _incomingPolicyName = _firewallZoneName + "-in";
         _outgoingPolicyName = _firewallZoneName + "-out";
+        _toHostPolicyName = _firewallZoneName + "-to";
+        _fromHostPolicyName = _firewallZoneName + "-from";
     }
     _clientConfig = _config.get("client-config", "");
 }
@@ -200,8 +202,10 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
 
             std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
             std::map<std::string, std::vector<std::string>> policies;
-            policies[_incomingPolicyName] = { _firewallZoneName, "public" };
-            policies[_outgoingPolicyName] = { "public", _firewallZoneName };
+            policies[_incomingPolicyName] = { _firewallZoneName, "ANY" };
+            policies[_outgoingPolicyName] = { "ANY", _firewallZoneName };
+            policies[_toHostPolicyName] = { _firewallZoneName, "HOST" };
+            policies[_fromHostPolicyName] = { "HOST", _firewallZoneName };
             for (const auto&[pname, pzones] : policies) {
                 if (std::any_of(
                     currentPolicies.begin(), currentPolicies.end(),

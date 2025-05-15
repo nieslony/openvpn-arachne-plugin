@@ -92,6 +92,8 @@ private:
 
     std::string _incomingPolicyName;
     std::string _outgoingPolicyName;
+    std::string _toHostPolicyName;
+    std::string _fromHostPolicyName;
 
     const char* getEnv(const char* key, const char *envp[]);
     std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);
