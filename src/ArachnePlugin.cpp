@@ -401,8 +401,8 @@ void ArachnePlugin::createRichRules(
                 ipSets[ipSetSrcName] = sources;
             }
             if (dstList.has_value()) {
-                requestRule << "destination ipset=\"" <<ipSetDstName << "\" ";
-                responseRule << "destination ipset=\"" <<ipSetDstName << "\" ";
+                requestRule << "destination ipset=\"" << ipSetDstName << "\" ";
+                responseRule << "destination ipset=\"" << ipSetDstName << "\" ";
                 ipSets[ipSetDstName] = destination;
             }
 
@@ -595,6 +595,6 @@ std::string ArachnePlugin::ipSetNameSrc(long id) const
 std::string ArachnePlugin::ipSetNameDst(long id) const
 {
     std::stringstream name;
-    name <<_firewallZoneName << "-" << id << "-src";
+    name <<_firewallZoneName << "-" << id << "-dst";
     return name.str();
 }
