@@ -352,7 +352,7 @@ void ClientSession::readJson(
     const Url &url,
     boost::property_tree::ptree &json
 ) {
-    _logger.note() << "  Getting rules from " << url.str() << std::flush;
+    _logger.debug() << "  Getting rules from " << url.str() << std::flush;
     std::string body;
 
     try {
