@@ -49,6 +49,8 @@ void ArachneLogBuf::log(const char* msg, ...)
         case PLOG_DEBUG:
             s << " DEBG";
             break;
+        default:
+            break;
     }
 
     _logFunc(_level, s.str().c_str(), msg, argptr);
