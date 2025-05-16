@@ -14,6 +14,7 @@
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <sstream>
+#include <tuple>
 #include <numeric>
 
 #include <ifaddrs.h>
@@ -252,14 +253,14 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
     session->logger().note() << "Bringing plugin up..." << std::flush;
-    setRouting(session);
+    getLocalIpAddresses(session);
 
+    setRouting(session);
     createFirewallZone(session);
     cleanupPolicies(session);
     loadFirewallRules(session);
     applyPermentRulesToRuntime(session);
 
-    getLocalIpAddresses(session);
     session->logger().note() << "Plugin is up." << std::flush;
 }
 
@@ -363,6 +364,7 @@ void ArachnePlugin::createRichRules(
     const boost::property_tree::ptree &ptree,
     const std::string icmpRules,
     std::vector<std::string> &richRules,
+    std::vector<std::string> &localRichRules,
     std::map<std::string, std::vector<std::string>> &ipSets,
     ClientSession *session
 )
@@ -371,93 +373,100 @@ void ArachnePlugin::createRichRules(
         session->logger().debug() << "  Allow ping from everywhere to everywhere" << std::flush;
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
+
+        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
+        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
     }
 
-    for (auto &[_, value] : ptree) {
-        int id = value.get<int>("id");
-
-        auto srcList = value.get_child_optional("sources");
-        std::vector<std::string> sources;
-        if (srcList.has_value())
-            for (auto &[_, src]: srcList.value())
-                sources.push_back(src.get_value<std::string>());
-
-        auto dstList = value.get_child_optional("destination");
-        std::vector<std::string> destination;
-        if (dstList.has_value())
-            for (auto &[_, dst]: dstList.value())
-                destination.push_back(dst.get_value<std::string>());
+    for (auto &[_, rule] : ptree) {
+        int id = rule.get<int>("id");
 
         std::string ipSetSrcName = ipSetNameSrc(id);
         std::string ipSetDstName = ipSetNameDst(id);
+        bool hasLocalSrc = false;
+        bool hasLocalDst = false;
 
-        if (icmpRules == "ALLOW_ALL_GRANTED") {
-            session->logger().debug() << "  Allow ping to granted hosts" << std::flush;
-            std::stringstream requestRule;
-            requestRule << "rule family=\"ipv4\" ";
-
-            std::stringstream responseRule;
-            responseRule << "rule family=\"ipv4\" ";
-
-            if (srcList.has_value()) {
-                requestRule << "source ipset=\"" << ipSetSrcName << "\" ";
-                responseRule << "source ipset=\"" << ipSetSrcName << "\" ";
-                ipSets[ipSetSrcName] = sources;
+        auto srcList = rule.get_child_optional("sources");
+        std::vector<std::string> sources;
+        if (srcList.has_value()) {
+            for (auto &[_, src]: srcList.value()) {
+                std::string ip(src.get_value<std::string>());
+                if (_myIps.contains(ip))
+                    hasLocalSrc = true;
+                else
+                    sources.push_back(ip);
             }
-            if (dstList.has_value()) {
-                requestRule << "destination ipset=\"" << ipSetDstName << "\" ";
-                responseRule << "destination ipset=\"" << ipSetDstName << "\" ";
-                ipSets[ipSetDstName] = destination;
-            }
-
-            requestRule << "icmp-type name=\"echo-request\" accept";
-            responseRule << "icmp-type name=\"echo-reply\" accept";
-
-            richRules.push_back(requestRule.str());
-            richRules.push_back(responseRule.str());
+            ipSets[ipSetSrcName] = sources;
         }
 
-        auto srvList = value.get_child_optional("services");
+        auto dstList = rule.get_child_optional("destination");
+        std::vector<std::string> destination;
+        if (dstList.has_value()) {
+            for (auto &[_, dst]: dstList.value()) {
+                std::string ip(dst.get_value<std::string>());
+                if (_myIps.contains(ip))
+                    hasLocalDst = true;
+                else
+                    destination.push_back(ip);
+            }
+            ipSets[ipSetDstName] = destination;
+        }
+
+        std::vector<std::string> whats;
+        if (icmpRules == "ALLOW_ALL_GRANTED") {
+            whats.push_back("icmp-type name=\"echo-request\"");
+            whats.push_back("icmp-type name=\"echo-reply\"");
+        }
+
+        auto srvList = rule.get_child_optional("services");
         if (srvList.has_value()) {
             for (auto &[_, srv]: srvList.value()) {
-                std::stringstream richrule;
-                richrule << "rule family=\"ipv4\" ";
-                if (srcList.has_value()) {
-                    richrule << "source ipset=\"" << ipSetSrcName << "\" ";
-                    ipSets[ipSetSrcName] = sources;
-                }
-                if (dstList.has_value()) {
-                    richrule << "destination ipset=\"" <<ipSetDstName << "\" ";
-                    ipSets[ipSetDstName] = destination;
-                }
-                richrule << "service name=\"" << srv.get_value<std::string>() << "\" ";
-                richrule << "accept";
-                richRules.push_back(richrule.str());
-                session->logger().debug() << "  Add rich rule '" << richrule.str() << "'" << std::flush;
+                whats.push_back("service name=\"" + srv.get_value<std::string>() + "\" ");
             }
         }
-        auto prtList = value.get_child_optional("ports");
+
+        auto prtList = rule.get_child_optional("ports");
         if (prtList.has_value()) {
             for (auto &[_, prt]: prtList.value()) {
                 std::vector<std::string> splitPort;
                 boost::split(splitPort, prt.get_value<std::string>(), boost::is_any_of("/"));
+                whats.push_back("port port=\"" + splitPort[0] + "\" protocol=\"" + splitPort[1] + "\" ");
+            }
+        }
 
-                std::stringstream richrule;
-                richrule << "rule family=\"ipv4\" ";
-                if (srcList.has_value()) {
-                    richrule << "source ipset=\"" << ipSetSrcName << "\" ";
-                    ipSets[ipSetSrcName] = sources;
-                }
-                if (dstList.has_value()) {
-                    richrule << "destination ipset=\"" <<ipSetDstName << "\" ";
-                    ipSets[ipSetDstName] = destination;
-                }
-                richrule << "port "
-                 << "port=\"" << splitPort[0] << "\" "
-                 << "protocol=\"" <<splitPort[1] << "\" ";
-                richrule << "accept";
-                richRules.push_back(richrule.str());
-                session->logger().debug() << "  Add rich rule '" << richrule.str() << "'" << std::flush;
+        for (auto &what: whats) {
+            std::stringstream richRule;
+            richRule << "rule family=\"ipv4\" ";
+            if (srcList.has_value())
+                richRule << "source ipset=\"" << ipSetSrcName << "\" ";
+            if (dstList.has_value())
+                richRule << "destination ipset=\"" << ipSetDstName << "\" ";
+            richRule << what << " accept";
+            session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+            richRules.push_back(richRule.str());
+        }
+
+        if (hasLocalDst) {
+            for (auto &what: whats) {
+                std::stringstream richRule;
+                richRule << "rule family=\"ipv4\" ";
+                if (srcList.has_value())
+                    richRule << "source ipset=\"" << ipSetSrcName << "\" ";
+                richRule << what << " accept";
+                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+                localRichRules.push_back(richRule.str());
+            }
+        }
+
+        if (hasLocalSrc) {
+            for (auto &what: whats) {
+                std::stringstream richRule;
+                richRule << "rule family=\"ipv4\" ";
+                if (dstList.has_value())
+                    richRule << "destination ipset=\"" << ipSetDstName << "\" ";
+                richRule << what << " accept";
+                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+                localRichRules.push_back(richRule.str());
             }
         }
     }
@@ -479,12 +488,14 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
 
         std::vector<std::string> incomingRichRules;
         std::vector<std::string> outgoingRichRules;
+        std::vector<std::string> toHostRichRules;
+        std::vector<std::string> fromHostRichRules;
         std::map<std::string, std::vector<std::string>> ipSets;
         auto incomingRules = pt.get_child("incoming");
         auto outgoingRules = pt.get_child("outgoing");
         auto icmpRules = pt.get<std::string>("icmp-rules");
-        createRichRules(incomingRules, icmpRules, incomingRichRules, ipSets, session);
-        createRichRules(outgoingRules, icmpRules, outgoingRichRules, ipSets, session);
+        createRichRules(incomingRules, icmpRules, incomingRichRules, toHostRichRules, ipSets, session);
+        createRichRules(outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules, ipSets, session);
 
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1_Config firewallConfig(connection);
@@ -503,28 +514,37 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
         }
         session->logger().note() << "  " << ipSets.size() << " IP sets added." << std::flush;
 
-        auto outgoingPath = firewallConfig.getPolicyByName(_outgoingPolicyName);
-        auto outgoingProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(outgoingPath));
-        std::map<std::string, sdbus::Variant> outgoingSettings;
-        outgoingSettings["rich_rules"] = outgoingRichRules;
-        outgoingProxy->callMethod("update")
+        std::list<std::tuple<std::string&, std::vector<std::string>& > > t {
+            { _incomingPolicyName, incomingRichRules },
+            { _outgoingPolicyName, outgoingRichRules },
+            { _toHostPolicyName, toHostRichRules },
+            { _fromHostPolicyName, fromHostRichRules }
+        };
+        for (auto &[name, rules]: t) {
+            auto objPath = firewallConfig.getPolicyByName(name);
+            auto proxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(objPath));
+            std::map<std::string, sdbus::Variant> settings;
+            settings["rich_rules"] = rules;
+            proxy->callMethod("update")
             .onInterface("org.fedoraproject.FirewallD1.config.policy")
-        .   withArguments(outgoingSettings);
-
-        auto incomingPath = firewallConfig.getPolicyByName(_incomingPolicyName);
-        auto incomingProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(incomingPath));
-        std::map<std::string, sdbus::Variant> incomingSettings;
-        incomingSettings["rich_rules"] = incomingRichRules;
-        incomingProxy->callMethod("update")
-            .onInterface("org.fedoraproject.FirewallD1.config.policy")
-            .withArguments(incomingSettings);
+            .   withArguments(settings);
+        }
 
         session->logger().note()
             << "  "
-            << incomingRules.size() << " incoming rules with " << incomingRichRules.size() << " resulting rich rules, "
-            << outgoingRules.size() << " outgoung rules with " << outgoingRichRules.size() << " resulting rich rules "
-            << "added."
+            << incomingRules.size() << " incoming rules: "
+            << incomingRichRules.size() << " incoming rich rules, "
+            << toHostRichRules.size() << " rich rules to localhost"
+            << " added"
             << std::flush;
+        session->logger().note()
+            << "  "
+            << outgoingRules.size() << " outgoing rules: "
+            << outgoingRichRules.size() << " outgoing rich rules, "
+            << fromHostRichRules.size() << " rich rules from localhost"
+            << " added"
+            << std::flush;
+
     }
     catch (std::exception &ex) {
         std::stringstream str;
@@ -563,12 +583,14 @@ void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
                     buffer,
                     INET_ADDRSTRLEN
                 );
-                _myIps.insert(std::string(buffer));
+                std::string ip(buffer);
+                if (!ip.starts_with("127."))
+                    _myIps.insert(std::string(buffer));
             }
         }
     }
     freeifaddrs(ptr_ifaddrs);
-    session->logger().note()
+    session->logger().debug()
         << "Local IP addresses: "
         << std::accumulate(
                 std::begin(_myIps),

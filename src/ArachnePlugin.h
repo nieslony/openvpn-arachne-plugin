@@ -109,6 +109,7 @@ private:
         const boost::property_tree::ptree &ptree,
         const std::string icmpRules,
         std::vector<std::string> &richRules,
+        std::vector<std::string> &localRichRules,
         std::map<std::string, std::vector<std::string>> &ipSets,
         ClientSession *session
     );
