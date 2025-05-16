@@ -174,77 +174,73 @@ void ArachnePlugin::restoreRouting(ClientSession *session)
 
 void ArachnePlugin::createFirewallZone(ClientSession *session)
 {
-    if (_enableFirewall) {
-        session->logger().note() << "Preparing firewall zone " <<_firewallZoneName << std::flush;
-        auto connection = sdbus::createSystemBusConnection();
-        FirewallD1 firewall(connection);
-        FirewallD1_Config firewallConfig(connection);
+    session->logger().note() << "Preparing firewall zone " <<_firewallZoneName << std::flush;
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1 firewall(connection);
+    FirewallD1_Config firewallConfig(connection);
 
-        try {
-            std::vector<std::string> zones = firewallConfig.getZoneNames();
+    try {
+        std::vector<std::string> zones = firewallConfig.getZoneNames();
+        if (std::any_of(
+            zones.begin(), zones.end(),
+            [this](std::string s){ return s == _firewallZoneName; }
+        )
+        ) {
+            session->logger().note()
+                << "  Firewall Zone '" << _firewallZoneName << "' already exists"
+                << std::flush;
+        }
+        else {
+            session->logger().note()
+                << "Creating firewall zone '" << _firewallZoneName << "'"
+                << std::flush;
+            std::map<std::string, sdbus::Variant> settings;
+            settings["target"] = "DROP";
+            settings["interfaces"] = std::vector<std::string> { _interface };
+            firewallConfig.addZone2(_firewallZoneName, settings);
+        }
+
+        std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
+        std::map<std::string, std::vector<std::string>> policies;
+        policies[_incomingPolicyName] = { _firewallZoneName, "ANY" };
+        policies[_outgoingPolicyName] = { "ANY", _firewallZoneName };
+        policies[_toHostPolicyName] = { _firewallZoneName, "HOST" };
+        policies[_fromHostPolicyName] = { "HOST", _firewallZoneName };
+        for (const auto&[pname, pzones] : policies) {
             if (std::any_of(
-                zones.begin(), zones.end(),
-                [this](std::string s){ return s == _firewallZoneName; }
+                currentPolicies.begin(), currentPolicies.end(),
+                [pname](std::string s){ return s == pname; }
             )
             ) {
                 session->logger().note()
-                    << "  Firewall Zone '" << _firewallZoneName << "' already exists"
+                    << "  Firewall Policy '" << pname << "' already exists"
                     << std::flush;
             }
             else {
                 session->logger().note()
-                    << "Creating firewall zone '" << _firewallZoneName << "'"
+                    << "  Creating firewall policy '" << pname << "'"
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
-                settings["target"] = "DROP";
-                settings["interfaces"] = std::vector<std::string> { _interface };
-                firewallConfig.addZone2(_firewallZoneName, settings);
+                settings["ingress_zones"] = std::vector<std::string> ({
+                    policies[pname].at(0)
+                });
+                settings["egress_zones"] = std::vector<std::string> ({
+                    policies[pname].at(1)
+                });
+                settings["target"] = "CONTINUE";
+                firewallConfig.addPolicy(pname, settings);
             }
-
-            std::vector<std::string> currentPolicies = firewallConfig.getPolicyNames();
-            std::map<std::string, std::vector<std::string>> policies;
-            policies[_incomingPolicyName] = { _firewallZoneName, "ANY" };
-            policies[_outgoingPolicyName] = { "ANY", _firewallZoneName };
-            policies[_toHostPolicyName] = { _firewallZoneName, "HOST" };
-            policies[_fromHostPolicyName] = { "HOST", _firewallZoneName };
-            for (const auto&[pname, pzones] : policies) {
-                if (std::any_of(
-                    currentPolicies.begin(), currentPolicies.end(),
-                    [pname](std::string s){ return s == pname; }
-                )
-                ) {
-                    session->logger().note()
-                        << "  Firewall Policy '" << pname << "' already exists"
-                        << std::flush;
-                }
-                else {
-                    session->logger().note()
-                        << "  Creating firewall policy '" << pname << "'"
-                        << std::flush;
-                    std::map<std::string, sdbus::Variant> settings;
-                    settings["ingress_zones"] = std::vector<std::string> ({
-                        policies[pname].at(0)
-                    });
-                    settings["egress_zones"] = std::vector<std::string> ({
-                        policies[pname].at(1)
-                    });
-                    settings["target"] = "CONTINUE";
-                    firewallConfig.addPolicy(pname, settings);
-                }
-            }
-            firewall.reload();
         }
-        catch (const sdbus::Error &ex)
-        {
-            std::stringstream msg;
-            msg << "Cannot create firewall zone " << _firewallZoneName
-                << ": [" << ex.getName() << "]: "
-                << ex.getMessage()
-                ;
-            throw PluginException(msg.str());
-        }
-    } else {
-        _logger.note() << "Firewall is disabled" << std::flush;
+        firewall.reload();
+    }
+    catch (const sdbus::Error &ex)
+    {
+        std::stringstream msg;
+        msg << "Cannot create firewall zone " << _firewallZoneName
+            << ": [" << ex.getName() << "]: "
+            << ex.getMessage()
+            ;
+        throw PluginException(msg.str());
     }
 }
 
@@ -256,10 +252,15 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     getLocalIpAddresses(session);
 
     setRouting(session);
-    createFirewallZone(session);
-    cleanupPolicies(session);
-    loadFirewallRules(session);
-    applyPermentRulesToRuntime(session);
+
+    if (_enableFirewall) {
+        createFirewallZone(session);
+        cleanupPolicies(session);
+        loadFirewallRules(session);
+        applyPermentRulesToRuntime(session);
+    }
+    else
+        session->logger().note() << "Firewall is disabled" << std::flush;
 
     session->logger().note() << "Plugin is up." << std::flush;
 }
