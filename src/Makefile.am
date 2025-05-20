@@ -12,7 +12,15 @@ arachne_la_SOURCES = \
         FirewallD1.cpp \
         Url.cpp
 
-DBUS_GENERATED = FirewallD1_Proxy.h FirewallD1_Config_Proxy.h
+
+DBUS_GENERATED = firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h \
+	firewalld-proxy-sdbus-1/FirewallD1_Config_Policy_Proxy.h \
+	firewalld-proxy-sdbus-1/FirewallD1_Config_Proxy.h \
+	firewalld-proxy-sdbus-1/FirewallD1_Proxy.h
+DBUS_GENERATED_ = firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h \
+	_firewalld-proxy-sdbus-2/FirewallD1_Config_Policy_Proxy.h \
+	firewalld-proxy-sdbus-2/FirewallD1_Config_Proxy.h \
+	firewalld-proxy-sdbus-2/FirewallD1_Proxy.h
 
 EXTRA_DIST = ${DBUS_GENERATED} \
         ArachneLogger.h \
