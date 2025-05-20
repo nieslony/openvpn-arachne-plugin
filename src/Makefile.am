@@ -12,24 +12,34 @@ arachne_la_SOURCES = \
         FirewallD1.cpp \
         Url.cpp
 
-
-DBUS_GENERATED = firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h \
+DBUS_GENERATED_1 = firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h \
 	firewalld-proxy-sdbus-1/FirewallD1_Config_Policy_Proxy.h \
 	firewalld-proxy-sdbus-1/FirewallD1_Config_Proxy.h \
 	firewalld-proxy-sdbus-1/FirewallD1_Proxy.h
-DBUS_GENERATED_ = firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h \
-	_firewalld-proxy-sdbus-2/FirewallD1_Config_Policy_Proxy.h \
+DBUS_GENERATED_2 = firewalld-proxy-sdbus-2/FirewallD1_Config_IpSet_Proxy.h \
+	firewalld-proxy-sdbus-2/FirewallD1_Config_Policy_Proxy.h \
 	firewalld-proxy-sdbus-2/FirewallD1_Config_Proxy.h \
 	firewalld-proxy-sdbus-2/FirewallD1_Proxy.h
 
-EXTRA_DIST = ${DBUS_GENERATED} \
-        ArachneLogger.h \
+
+if SDBUS_CPP_1
+DBUS_GENERATED = ${DBUS_GENERATED_1}
+endif
+if SDBUS_CPP_2
+DBUS_GENERATED = ${DBUS_GENERATED_2}
+endif
+
+EXTRA_DIST = ${DBUS_GENERATED_1} ${DBUS_GENERATED_2} \
+	ArachneLogger.h \
         ArachnePlugin.h \
         ClientSession.h \
         Config.h \
         FirewallD1.h \
         Http.h \
         Url.h
+
+dummy:
+	echo ${DBUS_GENERATED}
 
 ArachnePlugin.cpp: ${DBUS_GENERATED}
 main.cpp: ${DBUS_GENERATED}

@@ -28,9 +28,11 @@ PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.5],,
 )
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 2.0],
     [AC_DEFINE(SDBUS_CPP_2)],
+    AM_CONDITIONAL([SDBUS_CPP_2],[true])
     [AC_DEFINE(SDBUS_CPP_1)]
-    [AC_DEFINE(INTERCACE(iface), iface)]
+    AM_CONDITIONAL([SDBUS_CPP_1],[true])
 )
+
 
 AC_SUBST([plugindir])
 
