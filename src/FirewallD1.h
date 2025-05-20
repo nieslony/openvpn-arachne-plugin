@@ -2,13 +2,16 @@
 #define FIREWALLD1_H
 
 #include <sdbus-c++/sdbus-c++.h>
+
 #ifdef SDBUS_CPP_1
 #include "firewalld-proxy-sdbus-1/FirewallD1_Proxy.h"
 #include "firewalld-proxy-sdbus-1/FirewallD1_Config_Proxy.h"
+#include "firewalld-proxy-sdbus-1/FirewallD1_Config_IpSet_Proxy.h"
 #include "firewalld-proxy-sdbus-1/FirewallD1_Config_Policy_Proxy.h"
-#else
+#elif defined SDBUS_CPP_2
 #include "firewalld-proxy-sdbus-2/FirewallD1_Proxy.h"
 #include "firewalld-proxy-sdbus-2/FirewallD1_Config_Proxy.h"
+#include "firewalld-proxy-sdbus-2/FirewallD1_Config_IpSet_Proxy.h"
 #include "firewalld-proxy-sdbus-2/FirewallD1_Config_Policy_Proxy.h"
 #endif
 
@@ -159,6 +162,22 @@ protected:
     virtual void onUpdated(const std::string& name) {};
     virtual void onRemoved(const std::string& name) {};
     virtual void onRenamed(const std::string& name) {};
+};
+
+class FirewallD1_Config_IpSet
+: public sdbus::ProxyInterfaces<org::fedoraproject::FirewallD1::config::ipset_proxy>
+{
+public:
+    FirewallD1_Config_IpSet(std::unique_ptr<sdbus::IConnection> &connection, const std::string &objPath)
+    : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", objPath)
+    {
+        registerProxy();
+    }
+
+protected:
+    virtual void onUpdated(const std::string& name) {}
+    virtual void onRemoved(const std::string& name) {}
+    virtual void onRenamed(const std::string& name) {}
 };
 
 #endif

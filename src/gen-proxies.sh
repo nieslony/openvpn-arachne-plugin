@@ -2,6 +2,7 @@
 
 
 declare -A dbus_proxies=(
+    ["FirewallD1_Config_IpSet_Proxy.h"]="/org/fedoraproject/FirewallD1/config/ipset/0"
     ["FirewallD1_Config_Policy_Proxy.h"]="/org/fedoraproject/FirewallD1/config/policy/0"
     ["FirewallD1_Config_Proxy.h"]="/org/fedoraproject/FirewallD1/config"
     ["FirewallD1_Proxy.h"]="/org/fedoraproject/FirewallD1"

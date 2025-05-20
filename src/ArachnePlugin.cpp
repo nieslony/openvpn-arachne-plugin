@@ -331,16 +331,16 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
 
         for (std::string policyName: firewallConfig.getPolicyNames()) {
             if (policyName.starts_with(_firewallZoneName)) {
-                session->logger().note() << "  Removing all rich rules from policy '" << policyName << "'" << std::flush;
+                session->logger().note()
+                    << "  Removing all rich rules from policy '" << policyName << "'"
+                    << std::flush;
                 std::vector<std::string> emptyList;
                 std::map<std::string, sdbus::Variant> settings;
                 settings["rich_rules"] = emptyList;
 
                 auto policyPath = firewallConfig.getPolicyByName(policyName);
-                auto policyProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(policyPath));
-                policyProxy->callMethod("update")
-                    .onInterface("org.fedoraproject.FirewallD1.config.policy")
-                    .withArguments(settings);
+                FirewallD1_Config_Policy firewalldConfigPolicy(connection, policyPath);
+                firewalldConfigPolicy.update(settings);
             }
             else {
                 session->logger().debug() << "  Ignoring policy '" << policyName << "'" << std::flush;
@@ -353,9 +353,8 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
             if (ipSetName.starts_with(_firewallZoneName)) {
                 session->logger().debug() << "  Removing IP set " << ipSetName << std::flush;
                 auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
-                auto ipSetProxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(ipSetPath));
-                ipSetProxy->callMethod("remove")
-                    .onInterface("org.fedoraproject.FirewallD1.config.ipset");
+                FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
+                firewalldConfigIpSet.remove();
             }
         }
     }
@@ -476,10 +475,6 @@ void ArachnePlugin::createRichRules(
 void ArachnePlugin::loadFirewallRules(ClientSession *session)
 {
     session->logger().note() << "Loading firewall rules" << std::flush;
-    unsigned noIncomingRules = 0;
-    unsigned noOutgoingRules = 0;
-    unsigned noIncomingRichRules = 0;
-    unsigned noOutgoingRichRules = 0;
     try {
         std::ifstream ifs;
         ifs.open (_firewallRulesPath, std::ifstream::in);
@@ -523,12 +518,11 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
         };
         for (auto &[name, rules]: t) {
             auto objPath = firewallConfig.getPolicyByName(name);
-            auto proxy = sdbus::createProxy(std::move("org.fedoraproject.FirewallD1"), std::move(objPath));
             std::map<std::string, sdbus::Variant> settings;
             settings["rich_rules"] = rules;
-            proxy->callMethod("update")
-            .onInterface("org.fedoraproject.FirewallD1.config.policy")
-            .   withArguments(settings);
+
+            auto configPolicy = FirewallD1_Config_Policy(connection, objPath);
+            configPolicy.update(settings);
         }
 
         session->logger().note()
