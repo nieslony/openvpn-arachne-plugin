@@ -22,7 +22,7 @@ AX_BOOST_BASE
 AX_BOOST_SYSTEM
 AX_BOOST_REGEX
 
-PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.5],,
+PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.2],,
     AC_MSG_ERROR([You need the sdbus-c++ library (version 1.0 or newer)]
     [http://www.kistler.com/])
 )
