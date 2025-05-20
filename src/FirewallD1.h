@@ -1,6 +1,7 @@
 #ifndef FIREWALLD1_H
 #define FIREWALLD1_H
 
+#include <sdbus-c++/Types.h>
 #include <sdbus-c++/sdbus-c++.h>
 
 #ifdef SDBUS_CPP_1
@@ -20,7 +21,11 @@ class FirewallD1
 {
 public:
     FirewallD1(std::unique_ptr<sdbus::IConnection> &connection)
+#if defined SDBUS_CPP_1
         : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+#elif defined SDBUS_CPP_2
+        : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath("/org/fedoraproject/FirewallD1"))
+#endif
     {
         registerProxy();
     }
@@ -46,7 +51,11 @@ class FirewallD1_Config
 {
 public:
     FirewallD1_Config(std::unique_ptr<sdbus::IConnection> &connection)
+#if defined SDBUS_CPP_1
         : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1/config")
+#elif defined SDBUS_CPP_2
+        : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath("/org/fedoraproject/FirewallD1/config"))
+#endif
     {
         registerProxy();
     }
@@ -70,7 +79,11 @@ class FirewallD1_IpSet
 {
 public:
     FirewallD1_IpSet(std::unique_ptr<sdbus::IConnection> &connection)
+#if defined SDBUS_CPP_1
     : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+#elif defined SDBUS_CPP_2
+    : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath("/org/fedoraproject/FirewallD1"))
+#endif
     {
         registerProxy();
     }
@@ -90,7 +103,11 @@ class FirewallD1_Zone
 {
 public:
     FirewallD1_Zone(std::unique_ptr<sdbus::IConnection> &connection)
+#if defined SDBUS_CPP_1
         : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+#elif defined SDBUS_CPP_2
+        : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath("/org/fedoraproject/FirewallD1"))
+#endif
     {
         registerProxy();
     }
@@ -134,7 +151,11 @@ class FirewallD1_Policy
 {
 public:
     FirewallD1_Policy(std::unique_ptr<sdbus::IConnection> &connection)
+#if defined SDBUS_CPP_1
         : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", "/org/fedoraproject/FirewallD1")
+#elif defined SDBUS_CPP_2
+        : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath("/org/fedoraproject/FirewallD1"))
+#endif
     {
         registerProxy();
     }
@@ -153,7 +174,11 @@ class FirewallD1_Config_Policy
 {
 public:
     FirewallD1_Config_Policy(std::unique_ptr<sdbus::IConnection> &connection, const std::string &objPath)
+#if defined SDBUS_CPP_1
     : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", objPath)
+#elif defined SDBUS_CPP_2
+    : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath(objPath))
+#endif
     {
         registerProxy();
     }
@@ -169,7 +194,11 @@ class FirewallD1_Config_IpSet
 {
 public:
     FirewallD1_Config_IpSet(std::unique_ptr<sdbus::IConnection> &connection, const std::string &objPath)
+#if defined SDBUS_CPP_1
     : ProxyInterfaces(*connection, "org.fedoraproject.FirewallD1", objPath)
+#elif defined SDBUS_CPP_2
+    : ProxyInterfaces(*connection, sdbus::ServiceName("org.fedoraproject.FirewallD1"), sdbus::ObjectPath(objPath))
+#endif
     {
         registerProxy();
     }

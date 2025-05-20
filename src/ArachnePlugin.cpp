@@ -195,8 +195,8 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                 << "Creating firewall zone '" << _firewallZoneName << "'"
                 << std::flush;
             std::map<std::string, sdbus::Variant> settings;
-            settings["target"] = "DROP";
-            settings["interfaces"] = std::vector<std::string> { _interface };
+            settings["target"] = sdbus::Variant("DROP");
+            settings["interfaces"] = sdbus::Variant(std::vector<std::string> { _interface });
             firewallConfig.addZone2(_firewallZoneName, settings);
         }
 
@@ -221,13 +221,13 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                     << "  Creating firewall policy '" << pname << "'"
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
-                settings["ingress_zones"] = std::vector<std::string> ({
-                    policies[pname].at(0)
-                });
-                settings["egress_zones"] = std::vector<std::string> ({
-                    policies[pname].at(1)
-                });
-                settings["target"] = "CONTINUE";
+                settings["ingress_zones"] = sdbus::Variant(
+                    std::vector<std::string> ({ policies[pname].at(0) })
+                );
+                settings["egress_zones"] = sdbus::Variant(
+                    std::vector<std::string> ({ policies[pname].at(1) })
+                );
+                settings["target"] = sdbus::Variant("CONTINUE");
                 firewallConfig.addPolicy(pname, settings);
             }
         }
@@ -325,7 +325,7 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
 
         std::map<std::string, sdbus::Variant> settings;
         std::vector<std::string> noEntries;
-        settings["rich_rules"] = noEntries;
+        settings["rich_rules"] = sdbus::Variant(noEntries);
         FirewallD1_Policy firewallPolicy(connection);
         firewallPolicy.setPolicySettings(incomingPolicyName(), settings);
 
@@ -336,7 +336,7 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
                     << std::flush;
                 std::vector<std::string> emptyList;
                 std::map<std::string, sdbus::Variant> settings;
-                settings["rich_rules"] = emptyList;
+                settings["rich_rules"] = sdbus::Variant(emptyList);
 
                 auto policyPath = firewallConfig.getPolicyByName(policyName);
                 FirewallD1_Config_Policy firewalldConfigPolicy(connection, policyPath);
@@ -519,7 +519,7 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
         for (auto &[name, rules]: t) {
             auto objPath = firewallConfig.getPolicyByName(name);
             std::map<std::string, sdbus::Variant> settings;
-            settings["rich_rules"] = rules;
+            settings["rich_rules"] = sdbus::Variant(rules);
 
             auto configPolicy = FirewallD1_Config_Policy(connection, objPath);
             configPolicy.update(settings);
