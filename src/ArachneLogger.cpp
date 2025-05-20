@@ -35,10 +35,10 @@ void ArachneLogBuf::log(const char* msg, ...)
     std::stringstream s;
     s << "Arachne";
     if (_sessionId != -1)
-        s << "_" << _sessionId;
+        s << "_" << _sessionId << " ";
     switch (_level) {
         case PLOG_ERR:
-            s << " ERRR";
+            s << "ERROR";
             break;
         case PLOG_WARN:
             s << " WARN";
@@ -47,7 +47,7 @@ void ArachneLogBuf::log(const char* msg, ...)
             s << " NOTE";
             break;
         case PLOG_DEBUG:
-            s << " DEBG";
+            s << "DEBUG";
             break;
         default:
             break;
