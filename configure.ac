@@ -27,12 +27,14 @@ PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.5],,
     [http://www.kistler.com/])
 )
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 2.0],
-    [AC_DEFINE(SDBUS_CPP_2)],
-    AM_CONDITIONAL([SDBUS_CPP_2],[true])
-    [AC_DEFINE(SDBUS_CPP_1)]
-    AM_CONDITIONAL([SDBUS_CPP_1],[true])
-)
+    [AC_DEFINE(SDBUS_CPP_2)]
+    [AM_CONDITIONAL([SDBUS_CPP_1],[false])]
+    [AM_CONDITIONAL([SDBUS_CPP_2],[true])],
 
+    [AC_DEFINE(SDBUS_CPP_1)]
+    [AM_CONDITIONAL([SDBUS_CPP_1],[true])]
+    [AM_CONDITIONAL([SDBUS_CPP_2],[false])]
+)
 
 AC_SUBST([plugindir])
 
