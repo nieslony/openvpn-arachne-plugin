@@ -25,6 +25,8 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/regex.hpp>
 
+#include <sdbus-c++/Error.h>
+#include <sdbus-c++/IConnection.h>
 #include <set>
 #include <sstream>
 #include <string>
@@ -249,6 +251,7 @@ void ClientSession::addVpnIpToIpSets()
         }
     }
     catch (const sdbus::Error &ex) {
+        forceIpCleanup();
         throw PluginException("Cannot update IP set", ex.what());
     }
 
@@ -257,6 +260,49 @@ void ClientSession::addVpnIpToIpSets()
         << _incomingIds.size() << " incoming rule, "
         << _outgoingIds.size() << " outgoing rules"
         << std::flush;
+}
+
+void ClientSession::forceIpCleanup()
+{
+    _logger.note()
+        << "Something went wrong. Enforcing removal of IP " <<_vpnIp << " from IP sets."
+        << std::flush;
+    std::unique_ptr<sdbus::IConnection> connection;
+    try {
+        connection = sdbus::createSystemBusConnection();
+    }
+    catch (sdbus::Error &ex) {
+        _logger.warning()
+            << "  Cannot get DBUS connection: " << ex.getMessage()
+            << " No cleanup possible."
+            << std::flush;
+        return;
+    }
+    FirewallD1_IpSet firewallIpSet(connection);
+    for (long id: _incomingIds) {
+        std::string ipSetName = _plugin.ipSetNameSrc(id);
+        try {
+            firewallIpSet.addEntry(ipSetName, _vpnIp);
+            _logger.warning() << "  " <<_vpnIp << " removed from IP set " << ipSetName
+            << std::flush;
+        }
+        catch (const sdbus::Error &ex) {
+            _logger.warning()
+                << "  Cannot remove " << _vpnIp << "from IP set " << ipSetName << ": "
+                << ex.getMessage() << " (ignoring)"
+                << std::flush;
+        }
+    }
+    for (long id: _outgoingIds) {
+        try {
+            firewallIpSet.addEntry(_plugin.ipSetNameDst(id), _vpnIp);
+        }
+        catch (const sdbus::Error &ex) {
+            _logger.warning()
+            << ex.getMessage() << " (ignoring)"
+            << std::flush;
+        }
+    }
 }
 
 void ClientSession::removeVpnIpFromIpSets()
@@ -274,6 +320,7 @@ void ClientSession::removeVpnIpFromIpSets()
         }
     }
     catch (const sdbus::Error &ex) {
+        forceIpCleanup();
         throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }
 

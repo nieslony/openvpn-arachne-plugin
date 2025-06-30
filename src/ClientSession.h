@@ -112,6 +112,7 @@ private:
     void addRoute(int fd, const std::string &address, const std::string &mask);
     void removeRoute(int fd, const std::string &address, const std::string &mask);
     std::string makeBearerAuth();
+    void forceIpCleanup();
 };
 
 #endif
