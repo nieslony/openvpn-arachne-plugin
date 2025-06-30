@@ -1,4 +1,4 @@
-AC_INIT([openvpn-plugin-arachne], [0.1.5.2], [bug-automake@gnu.org])
+AC_INIT([openvpn-plugin-arachne], [1.4.0], [bug-automake@gnu.org])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign tar-pax])
 
 AC_CONFIG_MACRO_DIRS([m4])
