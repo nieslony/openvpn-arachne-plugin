@@ -21,6 +21,7 @@ AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
 AX_BOOST_BASE
 AX_BOOST_SYSTEM
 AX_BOOST_REGEX
+AX_BOOST_IOSTREAMS
 
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.2],,
     AC_MSG_ERROR([You need the sdbus-c++ library (version 1.0 or newer)]

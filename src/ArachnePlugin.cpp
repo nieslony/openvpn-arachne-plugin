@@ -1,6 +1,7 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
 #include "Config.h"
+#include "BreakDownRootDaemon.h"
 #include "FirewallD1.h"
 
 #include <boost/asio.hpp>
@@ -9,6 +10,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <cerrno>
+#include <cstring>
+#include <csignal>
 #include <fstream>
 #include <openvpn-plugin.h>
 #include <sdbus-c++/IProxy.h>
@@ -16,6 +19,7 @@
 #include <sstream>
 #include <tuple>
 #include <numeric>
+#include <sys/wait.h>
 
 #include <ifaddrs.h>
 #include <arpa/inet.h>
@@ -24,6 +28,7 @@ static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger(in_args->callbacks->plugin_vlog),
+    _breakDownRootDaemon(in_args->callbacks->plugin_vlog),
     _lastSession(0),
     _dbusConnection(sdbus::createSystemBusConnection()),
     _firewallZone(_dbusConnection),
@@ -32,6 +37,12 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger.note() << "Initializing" << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;
 
+    parseConfigFile(in_args);
+    startBackgroundProcess();
+}
+
+void ArachnePlugin::parseConfigFile(const openvpn_plugin_args_open_in *in_args)
+{
     const char* configFile = in_args->argv[1];
     if (configFile == NULL)
         throw PluginException("Please specify configuration file");
@@ -55,8 +66,58 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _clientConfig = _config.get("client-config", "");
 }
 
+void ArachnePlugin::startBackgroundProcess()
+{
+    int commandPipe[2];
+    if (pipe2(commandPipe, 0) == -1)
+    {
+        std::stringstream str;
+        str << "Cannot open pipe: " << strerror(errno);
+        throw PluginException(str.str());
+    }
+
+    int replyPipe[2];
+    if (pipe2(replyPipe, 0) == -1)
+    {
+        std::stringstream str;
+        str << "Cannot open pipe: " << strerror(errno);
+        throw PluginException(str.str());
+    }
+
+    _backgroundPid = fork();
+    switch (_backgroundPid) {
+        case -1: {
+            std::stringstream str;
+            str << "Cannot fork background process: " << strerror(errno);
+            throw PluginException(str.str());
+        }
+        case 0:
+            close(commandPipe[1]);
+            close(replyPipe[0]);
+            _breakDownRootDaemon.commandLoop(commandPipe[0], replyPipe[1]);
+            return;
+        default:
+            close(commandPipe[0]);
+            close(replyPipe[1]);
+            _backgroundReplyChannel.open(
+                boost::iostreams::file_descriptor_source(replyPipe[0], boost::iostreams::never_close_handle)
+            );
+            _backgroundCommandChannel.open(
+                boost::iostreams::file_descriptor_sink(commandPipe[1], boost::iostreams::never_close_handle)
+            );
+            return;
+    }
+}
+
 ArachnePlugin::~ArachnePlugin()
 {
+    _logger.note() << "Kill daemon process " <<_backgroundPid << std::flush;
+    if (kill(_backgroundPid, SIGKILL) == -1) {
+        _logger.error() << "Cannot kill daemon process " <<_backgroundPid << ": "
+            << strerror(errno)
+            << std::flush;
+    }
+    waitpid(_backgroundPid, NULL, 0);
 }
 
 ClientSession *ArachnePlugin::createClientSession()
@@ -249,6 +310,13 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
     session->logger().note() << "Bringing plugin up..." << std::flush;
+
+    BreakDownRootDaemon::execCommand(
+        _backgroundCommandChannel, _backgroundReplyChannel,
+        session,
+        BreakDownRootDaemon::PING, "Moin"
+    );
+
     getLocalIpAddresses(session);
 
     setRouting(session);
@@ -262,12 +330,22 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     else
         session->logger().note() << "Firewall is disabled" << std::flush;
 
-    session->logger().note() << "Plugin is up." << std::flush;
+    session->logger().note() << "Plugin is up." << '\0' << std::flush;
 }
 
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Bringing plugin down..." << std::flush;
+    BreakDownRootDaemon::execCommand(
+        _backgroundCommandChannel, _backgroundReplyChannel,
+        session,
+        BreakDownRootDaemon::PING, "Tach"
+    );
+    BreakDownRootDaemon::execCommand(
+        _backgroundCommandChannel, _backgroundReplyChannel,
+        session,
+        BreakDownRootDaemon::CLEANUP_POLICIES
+    );
     cleanupPolicies(session);
     applyPermentRulesToRuntime(session);
     restoreRouting(session);
@@ -315,7 +393,7 @@ void ArachnePlugin::clientDisconnect(
     session->removeRoutesToRemoteNetworks();
 }
 
-void ArachnePlugin::cleanupPolicies(ClientSession*session)
+void ArachnePlugin::cleanupPolicies(ClientSession *session)
 {
     if (_enableFirewall) {
         session->logger().note() << "Cleaning up firewall policies for zone '" <<_firewallZoneName << "'" << std::flush;

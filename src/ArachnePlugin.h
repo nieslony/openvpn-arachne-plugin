@@ -3,11 +3,14 @@
 
 #include <cstring>
 #include <ostream>
+#include <sched.h>
 #include <sstream>
 #include <stdio.h>
 #include <set>
 #include <list>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/iostreams/stream.hpp>
+#include <boost/iostreams/device/file_descriptor.hpp>
 
 #if defined HAVE_OPENVPN_PLUGIN_H
 #include <openvpn-plugin.h>
@@ -19,6 +22,7 @@
 
 #include "ArachneLogger.h"
 #include "Config.h"
+#include "BreakDownRootDaemon.h"
 #include "FirewallD1.h"
 #include "Url.h"
 
@@ -70,6 +74,7 @@ public:
 
 private:
     ArachneLogger _logger;
+    BreakDownRootDaemon _breakDownRootDaemon;
     plugin_vlog_t _logFunc;
     int _lastSession;
     Config _config;
@@ -95,6 +100,10 @@ private:
     std::string _toHostPolicyName;
     std::string _fromHostPolicyName;
 
+    pid_t _backgroundPid;
+    boost::iostreams::stream<boost::iostreams::file_descriptor_sink> _backgroundCommandChannel;
+    boost::iostreams::stream<boost::iostreams::file_descriptor_source> _backgroundReplyChannel;
+
     const char* getEnv(const char* key, const char *envp[]);
     std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);
     void readConfigFile(const char*);
@@ -114,6 +123,9 @@ private:
         ClientSession *session
     );
     void getLocalIpAddresses(ClientSession *session);
+
+    void parseConfigFile(const openvpn_plugin_args_open_in *in_args);
+    void startBackgroundProcess();
 };
 
 #endif
