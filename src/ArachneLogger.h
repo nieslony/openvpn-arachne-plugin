@@ -16,7 +16,7 @@
 class ArachneLogBuf : public std::streambuf
 {
 public:
-    ArachneLogBuf(plugin_vlog_t logFunc, int sessionId);
+    ArachneLogBuf(plugin_vlog_t logFunc, int sessionId, const std::string &prefix);;
 
     std::streambuf::int_type overflow( std::streambuf::int_type ch = EOF);
     void setLevel(openvpn_plugin_log_flags_t level) { _level = level; }
@@ -26,9 +26,10 @@ protected:
 
 private:
     plugin_vlog_t _logFunc;
-    int _sessionId;
+    int _sessionId = -1;
     openvpn_plugin_log_flags_t _level;
     std::stringstream _line;
+    std::string _prefix;
 
     void log(const char* msg, ...);
 };
@@ -39,7 +40,9 @@ private:
     ArachneLogBuf _buf;
 
 public:
-    ArachneLogger(plugin_vlog_t logFunc, int sessionId=-1);
+    ArachneLogger(plugin_vlog_t logFunc);
+    ArachneLogger(plugin_vlog_t logFunc, int sessionId);
+    ArachneLogger(plugin_vlog_t logFunc, const std::string &prefix);
 
     ArachneLogger &debug() { _buf.setLevel(PLOG_DEBUG); return *this; }
     ArachneLogger &note() { _buf.setLevel(PLOG_NOTE); return *this; }
