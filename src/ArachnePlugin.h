@@ -54,9 +54,11 @@ public:
     void clientConnect(const char *argv[], const char *envp[], ClientSession*);
     void clientDisconnect(const char *argv[], const char *envp[], ClientSession*);
 
+    bool enableFirewall() const { return _enableFirewall; }
+
     const std::string &firewallZoneName() { return _firewallZoneName; }
     const Url &firewallUrlUser() { return _firewallUrlUser; }
-    const std::set<std::string> &myIps() { return _myIps; }
+    const std::set<std::string> &myIps() const { return _myIps; }
 
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
     FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
@@ -65,12 +67,17 @@ public:
     bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
 
     const std::string &interface() const { return _interface; }
+    const std::string &firewallZoneName() const { return _firewallZoneName; }
 
     const std::string &incomingPolicyName() const { return _incomingPolicyName; }
     const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
+    const std::string &toHostPolicyName() const { return _toHostPolicyName; }
+    const std::string &fromHostPolicyName() const { return _fromHostPolicyName; }
 
     std::string ipSetNameSrc(long id) const;
     std::string ipSetNameDst(long id) const;
+
+    static const std::string FN_IP_FORWARD;
 
 private:
     ArachneLogger _logger;
@@ -109,23 +116,11 @@ private:
     void readConfigFile(const char*);
 
     std::string getRoutingStatus();
-    void setRoutingStatus(const std::string&);
-    void cleanupPolicies(ClientSession *session);
-    void loadFirewallRules(ClientSession *session);
-    void applyPermentRulesToRuntime(ClientSession *session);
-
-    void createRichRules(
-        const boost::property_tree::ptree &ptree,
-        const std::string icmpRules,
-        std::vector<std::string> &richRules,
-        std::vector<std::string> &localRichRules,
-        std::map<std::string, std::vector<std::string>> &ipSets,
-        ClientSession *session
-    );
     void getLocalIpAddresses(ClientSession *session);
 
     void parseConfigFile(const openvpn_plugin_args_open_in *in_args);
     void startBackgroundProcess();
+    void execCommand(ClientSession*, BreakDownRootDaemon::Command, const std::string &param = "");
 };
 
 #endif

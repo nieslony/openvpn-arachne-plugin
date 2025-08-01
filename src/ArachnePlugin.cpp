@@ -24,11 +24,11 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 
-static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
+const std::string ArachnePlugin::FN_IP_FORWARD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger(in_args->callbacks->plugin_vlog),
-    _breakDownRootDaemon(in_args->callbacks->plugin_vlog),
+    _breakDownRootDaemon(in_args->callbacks->plugin_vlog, *this),
     _lastSession(0),
     _dbusConnection(sdbus::createSystemBusConnection()),
     _firewallZone(_dbusConnection),
@@ -112,11 +112,7 @@ void ArachnePlugin::startBackgroundProcess()
 ArachnePlugin::~ArachnePlugin()
 {
     _logger.note() << "Kill daemon process " <<_backgroundPid << std::flush;
-    if (kill(_backgroundPid, SIGKILL) == -1) {
-        _logger.error() << "Cannot kill daemon process " <<_backgroundPid << ": "
-            << strerror(errno)
-            << std::flush;
-    }
+    execCommand(NULL, BreakDownRootDaemon::EXIT);
     waitpid(_backgroundPid, NULL, 0);
 }
 
@@ -180,25 +176,14 @@ std::string ArachnePlugin::getRoutingStatus()
 {
     std::string s;
     std::ifstream ifs;
-    ifs.open(FN_IP_FORWATD);
+    ifs.open(FN_IP_FORWARD);
     if (!ifs.is_open()) {
-        throw std::runtime_error("Error opening " + FN_IP_FORWATD);
+        throw std::runtime_error("Error opening " + FN_IP_FORWARD);
     }
     ifs >> s;
     ifs.close();
     _logger.note() << "Got routíng status: \"" << s << "\"" << std::flush;
     return s;
-}
-
-void ArachnePlugin::setRoutingStatus(const std::string& forward)
-{
-    std::ofstream ofs;
-    ofs.open(FN_IP_FORWATD);
-    if (!ofs.is_open()) {
-        throw std::runtime_error("Cannot open " + FN_IP_FORWATD + " for reading");
-    }
-    ofs << forward << std::endl;
-    ofs.close();
 }
 
 void ArachnePlugin::setRouting(ClientSession *session)
@@ -207,13 +192,15 @@ void ArachnePlugin::setRouting(ClientSession *session)
         _savedIpForward = getRoutingStatus();
         if (_savedIpForward == "0") {
             session->logger().note() << "Enabling IP forwarding" << std::flush;
-            setRoutingStatus("1");
+            execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, "1");
+            //setRoutingStatus("1");
         } else {
             session->logger().note() << "IP forwarding already enabled" << std::flush;
         }
     } else if (_enableRouting == "ENABLE") {
         session->logger().note() << "Enabling IP forwarding" << std::flush;
-        setRoutingStatus("1");
+        execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, "1");
+        //setRoutingStatus("1");
     } else if (_enableRouting == "OFF") {
         session->logger().note() << "Don't enable IP forwarding" << std::flush;
     } else {
@@ -227,7 +214,8 @@ void ArachnePlugin::restoreRouting(ClientSession *session)
         session->logger().note()
             << "Restoring IP forwading to " << _savedIpForward
             << std::flush;
-        setRoutingStatus(_savedIpForward);
+        execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, _savedIpForward);
+        //setRoutingStatus(_savedIpForward);
     } else {
         session->logger().note() << "Leaving routing untouched" << std::flush;
     }
@@ -311,21 +299,21 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
     _interface = getEnv("dev", envp);
     session->logger().note() << "Bringing plugin up..." << std::flush;
 
-    BreakDownRootDaemon::execCommand(
-        _backgroundCommandChannel, _backgroundReplyChannel,
-        session,
-        BreakDownRootDaemon::PING, "Moin"
-    );
-
     getLocalIpAddresses(session);
 
     setRouting(session);
 
     if (_enableFirewall) {
         createFirewallZone(session);
-        cleanupPolicies(session);
-        loadFirewallRules(session);
-        applyPermentRulesToRuntime(session);
+        execCommand(session, BreakDownRootDaemon::CLEANUP_POLICIES);
+
+        std::ifstream ifs(_firewallRulesPath);
+        std::stringstream firewallRules;
+        firewallRules << ifs.rdbuf();
+        execCommand(session, BreakDownRootDaemon::UPDATE_FIREWALL_RULES, firewallRules.str());
+
+        //loadFirewallRules(session);
+        execCommand(session, BreakDownRootDaemon::APPLY_PERMANENT_RULES_TO_RUNTIME);
     }
     else
         session->logger().note() << "Firewall is disabled" << std::flush;
@@ -336,18 +324,8 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Bringing plugin down..." << std::flush;
-    BreakDownRootDaemon::execCommand(
-        _backgroundCommandChannel, _backgroundReplyChannel,
-        session,
-        BreakDownRootDaemon::PING, "Tach"
-    );
-    BreakDownRootDaemon::execCommand(
-        _backgroundCommandChannel, _backgroundReplyChannel,
-        session,
-        BreakDownRootDaemon::CLEANUP_POLICIES
-    );
-    cleanupPolicies(session);
-    applyPermentRulesToRuntime(session);
+    execCommand(session, BreakDownRootDaemon::CLEANUP_POLICIES);
+    execCommand(session, BreakDownRootDaemon::APPLY_PERMANENT_RULES_TO_RUNTIME);
     restoreRouting(session);
     session->logger() << "Plugin is down" << std::flush;
 }
@@ -391,239 +369,6 @@ void ArachnePlugin::clientDisconnect(
     if (_enableFirewall)
         session->removeVpnIpFromIpSets();
     session->removeRoutesToRemoteNetworks();
-}
-
-void ArachnePlugin::cleanupPolicies(ClientSession *session)
-{
-    if (_enableFirewall) {
-        session->logger().note() << "Cleaning up firewall policies for zone '" <<_firewallZoneName << "'" << std::flush;
-        auto connection = sdbus::createSystemBusConnection();
-        FirewallD1 firewall(connection);
-        FirewallD1_Config firewallConfig(connection);
-
-        std::map<std::string, sdbus::Variant> settings;
-        std::vector<std::string> noEntries;
-        settings["rich_rules"] = sdbus::Variant(noEntries);
-        FirewallD1_Policy firewallPolicy(connection);
-        firewallPolicy.setPolicySettings(incomingPolicyName(), settings);
-
-        for (std::string policyName: firewallConfig.getPolicyNames()) {
-            if (policyName.starts_with(_firewallZoneName)) {
-                session->logger().note()
-                    << "  Removing all rich rules from policy '" << policyName << "'"
-                    << std::flush;
-                std::vector<std::string> emptyList;
-                std::map<std::string, sdbus::Variant> settings;
-                settings["rich_rules"] = sdbus::Variant(emptyList);
-
-                auto policyPath = firewallConfig.getPolicyByName(policyName);
-                FirewallD1_Config_Policy firewalldConfigPolicy(connection, policyPath);
-                firewalldConfigPolicy.update(settings);
-            }
-            else {
-                session->logger().debug() << "  Ignoring policy '" << policyName << "'" << std::flush;
-            }
-        }
-
-        auto ipSetNames = firewallConfig.getIPSetNames();
-        session->logger().note() << "  Removing " << ipSetNames.size() << " IP sets" << std::flush;
-        for (std::string ipSetName: ipSetNames) {
-            if (ipSetName.starts_with(_firewallZoneName)) {
-                session->logger().debug() << "  Removing IP set " << ipSetName << std::flush;
-                auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
-                FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
-                firewalldConfigIpSet.remove();
-            }
-        }
-    }
-}
-
-void ArachnePlugin::createRichRules(
-    const boost::property_tree::ptree &ptree,
-    const std::string icmpRules,
-    std::vector<std::string> &richRules,
-    std::vector<std::string> &localRichRules,
-    std::map<std::string, std::vector<std::string>> &ipSets,
-    ClientSession *session
-)
-{
-    if (icmpRules == "ALLOW_ALL") {
-        session->logger().debug() << "  Allow ping from everywhere to everywhere" << std::flush;
-        richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
-        richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
-
-        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
-        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
-    }
-
-    for (auto &[_, rule] : ptree) {
-        int id = rule.get<int>("id");
-
-        std::string ipSetSrcName = ipSetNameSrc(id);
-        std::string ipSetDstName = ipSetNameDst(id);
-        bool hasLocalSrc = false;
-        bool hasLocalDst = false;
-
-        auto srcList = rule.get_child_optional("sources");
-        std::vector<std::string> sources;
-        if (srcList.has_value()) {
-            for (auto &[_, src]: srcList.value()) {
-                std::string ip(src.get_value<std::string>());
-                if (_myIps.contains(ip))
-                    hasLocalSrc = true;
-                else
-                    sources.push_back(ip);
-            }
-            ipSets[ipSetSrcName] = sources;
-        }
-
-        auto dstList = rule.get_child_optional("destination");
-        std::vector<std::string> destination;
-        if (dstList.has_value()) {
-            for (auto &[_, dst]: dstList.value()) {
-                std::string ip(dst.get_value<std::string>());
-                if (_myIps.contains(ip))
-                    hasLocalDst = true;
-                else
-                    destination.push_back(ip);
-            }
-            ipSets[ipSetDstName] = destination;
-        }
-
-        std::vector<std::string> whats;
-        if (icmpRules == "ALLOW_ALL_GRANTED") {
-            whats.push_back("icmp-type name=\"echo-request\"");
-            whats.push_back("icmp-type name=\"echo-reply\"");
-        }
-
-        auto srvList = rule.get_child_optional("services");
-        if (srvList.has_value()) {
-            for (auto &[_, srv]: srvList.value()) {
-                whats.push_back("service name=\"" + srv.get_value<std::string>() + "\" ");
-            }
-        }
-
-        auto prtList = rule.get_child_optional("ports");
-        if (prtList.has_value()) {
-            for (auto &[_, prt]: prtList.value()) {
-                std::vector<std::string> splitPort;
-                boost::split(splitPort, prt.get_value<std::string>(), boost::is_any_of("/"));
-                whats.push_back("port port=\"" + splitPort[0] + "\" protocol=\"" + splitPort[1] + "\" ");
-            }
-        }
-
-        for (auto &what: whats) {
-            std::stringstream richRule;
-            richRule << "rule family=\"ipv4\" ";
-            if (srcList.has_value())
-                richRule << "source ipset=\"" << ipSetSrcName << "\" ";
-            if (dstList.has_value())
-                richRule << "destination ipset=\"" << ipSetDstName << "\" ";
-            richRule << what << " accept";
-            session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
-            richRules.push_back(richRule.str());
-        }
-
-        if (hasLocalDst) {
-            for (auto &what: whats) {
-                std::stringstream richRule;
-                richRule << "rule family=\"ipv4\" ";
-                if (srcList.has_value())
-                    richRule << "source ipset=\"" << ipSetSrcName << "\" ";
-                richRule << what << " accept";
-                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
-                localRichRules.push_back(richRule.str());
-            }
-        }
-
-        if (hasLocalSrc) {
-            for (auto &what: whats) {
-                std::stringstream richRule;
-                richRule << "rule family=\"ipv4\" ";
-                if (dstList.has_value())
-                    richRule << "destination ipset=\"" << ipSetDstName << "\" ";
-                richRule << what << " accept";
-                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
-                localRichRules.push_back(richRule.str());
-            }
-        }
-    }
-}
-
-void ArachnePlugin::loadFirewallRules(ClientSession *session)
-{
-    session->logger().note() << "Loading firewall rules" << std::flush;
-    try {
-        std::ifstream ifs;
-        ifs.open (_firewallRulesPath, std::ifstream::in);
-        boost::property_tree::ptree pt;
-        boost::property_tree::read_json(ifs, pt);
-        ifs.close();
-
-        std::vector<std::string> incomingRichRules;
-        std::vector<std::string> outgoingRichRules;
-        std::vector<std::string> toHostRichRules;
-        std::vector<std::string> fromHostRichRules;
-        std::map<std::string, std::vector<std::string>> ipSets;
-        auto incomingRules = pt.get_child("incoming");
-        auto outgoingRules = pt.get_child("outgoing");
-        auto icmpRules = pt.get<std::string>("icmp-rules");
-        createRichRules(incomingRules, icmpRules, incomingRichRules, toHostRichRules, ipSets, session);
-        createRichRules(outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules, ipSets, session);
-
-        auto connection = sdbus::createSystemBusConnection();
-        FirewallD1_Config firewallConfig(connection);
-
-        for (auto &[name, entries]: ipSets) {
-            sdbus::Struct<
-                std::string, // version
-                std::string, // name
-                std::string, // description
-                std::string, // type
-                std::map<std::string, std::string>, // options
-                std::vector<std::string> // entries
-            > settings{ "1", name, "", "hash:ip", {}, entries};
-            session->logger().debug() << "  Adding IPSet " << name << std::flush;
-            firewallConfig.addIPSet(name, settings);
-        }
-        session->logger().note() << "  " << ipSets.size() << " IP sets added." << std::flush;
-
-        std::list<std::tuple<std::string&, std::vector<std::string>& > > t {
-            { _incomingPolicyName, incomingRichRules },
-            { _outgoingPolicyName, outgoingRichRules },
-            { _toHostPolicyName, toHostRichRules },
-            { _fromHostPolicyName, fromHostRichRules }
-        };
-        for (auto &[name, rules]: t) {
-            auto objPath = firewallConfig.getPolicyByName(name);
-            std::map<std::string, sdbus::Variant> settings;
-            settings["rich_rules"] = sdbus::Variant(rules);
-
-            auto configPolicy = FirewallD1_Config_Policy(connection, objPath);
-            configPolicy.update(settings);
-        }
-
-        session->logger().note()
-            << "  "
-            << incomingRules.size() << " incoming rules: "
-            << incomingRichRules.size() << " incoming rich rules, "
-            << toHostRichRules.size() << " rich rules to localhost"
-            << " added"
-            << std::flush;
-        session->logger().note()
-            << "  "
-            << outgoingRules.size() << " outgoing rules: "
-            << outgoingRichRules.size() << " outgoing rich rules, "
-            << fromHostRichRules.size() << " rich rules from localhost"
-            << " added"
-            << std::flush;
-
-    }
-    catch (std::exception &ex) {
-        std::stringstream str;
-        str << "Error reading " << _firewallRulesPath << ": " << ex.what();
-        throw PluginException(str.str());
-    }
 }
 
 void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
@@ -676,14 +421,6 @@ void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
         << std::flush;
 }
 
-void ArachnePlugin::applyPermentRulesToRuntime(ClientSession *session)
-{
-    session->logger().note() << "Reloading permanent firewall settings" << std::flush;
-    auto connection = sdbus::createSystemBusConnection();
-    FirewallD1 firewall(connection);
-    firewall.reload();
-}
-
 std::string ArachnePlugin::ipSetNameSrc(long id) const
 {
     std::stringstream name;
@@ -696,4 +433,13 @@ std::string ArachnePlugin::ipSetNameDst(long id) const
     std::stringstream name;
     name <<_firewallZoneName << "-" << id << "-dst";
     return name.str();
+}
+
+void ArachnePlugin::execCommand(ClientSession* session, BreakDownRootDaemon::Command command, const std::string &param)
+{
+    BreakDownRootDaemon::execCommand(
+        _backgroundCommandChannel, _backgroundReplyChannel,
+        session != NULL ? session->logger() : _logger,
+        command, param
+    );
 }

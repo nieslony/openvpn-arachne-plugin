@@ -4,18 +4,26 @@
 
 #include <cstdint>
 #include <ostream>
+#include <fstream>
+#include <tuple>
+
+#include <boost/algorithm/string.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 #include <cstdio>
+#include <cstdlib>
 
 const char BreakDownRootDaemon::DELIM = '\x09';
 
-BreakDownRootDaemon::BreakDownRootDaemon(plugin_vlog_t logFunc) :
+BreakDownRootDaemon::BreakDownRootDaemon(plugin_vlog_t logFunc, const ArachnePlugin &plugin) :
+    _plugin(plugin),
     _logger(logFunc, "BreakDownRootCommands")
 {}
 
 void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
 {
-    _logger.note() << "Starting event loop" << std::flush;
+    _logger.note() << "Starting event loop as user " << getpid() << std::flush;
 
     _reader.open(
         boost::iostreams::file_descriptor_source(fdRead, boost::iostreams::never_close_handle)
@@ -32,31 +40,52 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
         std::getline(_reader, param, DELIM);
 
         _logger.debug() << "Got command: " << std::to_string(command) << "(" << param << ")" << std::flush;
-        switch (static_cast<Command>(command)) {
-            case PING:
-                _logger.debug() << "Ping" << std::flush;
-                sendAnswer(DEBUG, "Pong: " + param);
-                sendAnswer(SUCCESS);
-                break;
-            case CLEANUP_POLICIES:
-                _logger.debug() << "Cleanup Policies" << std::flush;
-                break;
-            default:
-                _logger.warning() << "Invalid command: " << command << std::flush;
-                sendAnswer(WARNING, "Invalid command");
-                sendAnswer(SUCCESS);
+        try {
+            switch (static_cast<Command>(command)) {
+                case PING:
+                    _logger.debug() << "Ping" << std::flush;
+                    sendAnswer(DEBUG, "Pong: " + param);
+                    break;
+                case CLEANUP_POLICIES:
+                    _logger.debug() << "Cleanup Policies" << std::flush;
+                    cleanupPolicies();
+                    break;
+                case APPLY_PERMANENT_RULES_TO_RUNTIME:
+                    _logger.debug() << "Apply permanent rules to runtime" << std::flush;
+                    applyPermentRulesToRuntime();
+                    break;
+                case SET_ROUTING_STATUS:
+                    _logger.debug() << "Set routing status " << param << std::flush;
+                    setRoutingStatus(param);
+                    break;
+                case UPDATE_FIREWALL_RULES:
+                    _logger.debug() << "Updat Firewall Rules" << param << std::flush;
+                    updateFirewallRules(param);
+                    break;
+                case EXIT:
+                    _logger.note() << "Exiting event loop" << std::flush;
+                    exit(EXIT_SUCCESS);
+                    break;
+                default:
+                    _logger.warning() << "Invalid command: " << command << std::flush;
+                    sendAnswer(WARNING, "Invalid command");
+            }
+            sendAnswer(SUCCESS);
+        }
+        catch (PluginException &ex) {
+            _logger.warning() << "Caught exception: " << ex.what() << std::flush;
+            sendAnswer(EXCEPTION, ex.what());
         }
     }
     _logger.warning() << "Event loop unexped left" << std::flush;
 }
 
 void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream &replyStream,
-                                      ClientSession *session,
+                                      ArachneLogger &logger,
                                       Command command, const std::string &param)
 {
-    session->logger().debug() << "Sending " << command << std::flush;
+    logger.debug() << "Sending " << command << std::flush;
     commandStream << static_cast<uint8_t>(command)
-    //commandStream << "PING" << DELIM
         << param << DELIM
         << std::flush;
     while (true) {
@@ -64,26 +93,26 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
         std::string replyStr;
 
         replyStream >> reply;
-        session->logger().debug() << "Got reply: " << std::to_string(reply) << std::flush;
+        logger.debug() << "Got reply: " << std::to_string(reply) << std::flush;
         switch (static_cast<Answer>(reply)) {
             case SUCCESS:
-                session->logger().debug() << "Success" << std::flush;
+                logger.debug() << "Success" << std::flush;
                 return;
             case DEBUG:
                 std::getline(replyStream, replyStr, DELIM);
-                session->logger().debug() << replyStr << std::flush;
+                logger.debug() << replyStr << std::flush;
                 break;
             case NOTE:
                 std::getline(replyStream, replyStr, DELIM);
-                session->logger().note() << replyStr << std::flush;
+                logger.note() << replyStr << std::flush;
                 break;
             case WARNING:
                 std::getline(replyStream, replyStr, DELIM);
-                session->logger().warning() << replyStr << std::flush;
+                logger.warning() << replyStr << std::flush;
                 break;
             case ERROR:
                 std::getline(replyStream, replyStr, DELIM);
-                session->logger().error() << replyStr << std::flush;
+                logger.error() << replyStr << std::flush;
                 break;
             case EXCEPTION:
                 std::getline(replyStream, replyStr, DELIM);
@@ -107,4 +136,253 @@ void BreakDownRootDaemon::sendAnswer(Answer answer, const std::string &msg)
         << static_cast<uint8_t>(answer) << answer
         << msg << DELIM
         << std::flush;
+}
+
+std::ostream &BreakDownRootDaemon::answer(Answer answer)
+{
+    _writer
+        << static_cast<uint8_t>(answer) << answer;
+
+    return _writer;
+}
+
+void BreakDownRootDaemon::cleanupPolicies()
+{
+    if (_plugin.enableFirewall()) {
+        answer(NOTE) << "Cleaning up firewall policies for zone '" << _plugin.firewallZoneName() << "'" << flushAnswer;
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1 firewall(connection);
+        FirewallD1_Config firewallConfig(connection);
+
+        std::map<std::string, sdbus::Variant> settings;
+        std::vector<std::string> noEntries;
+        settings["rich_rules"] = sdbus::Variant(noEntries);
+        FirewallD1_Policy firewallPolicy(connection);
+        firewallPolicy.setPolicySettings(_plugin.incomingPolicyName(), settings);
+
+        for (std::string policyName: firewallConfig.getPolicyNames()) {
+            if (policyName.starts_with(_plugin.firewallZoneName())) {
+                answer(NOTE)
+                    << "  Removing all rich rules from policy '" << policyName << "'"
+                    << flushAnswer;
+                std::vector<std::string> emptyList;
+                std::map<std::string, sdbus::Variant> settings;
+                settings["rich_rules"] = sdbus::Variant(emptyList);
+
+                auto policyPath = firewallConfig.getPolicyByName(policyName);
+                FirewallD1_Config_Policy firewalldConfigPolicy(connection, policyPath);
+                firewalldConfigPolicy.update(settings);
+            }
+            else {
+                answer(DEBUG) << "  Ignoring policy '" << policyName << "'" << flushAnswer;
+            }
+        }
+
+        auto ipSetNames = firewallConfig.getIPSetNames();
+        answer(NOTE) << "  Removing " << ipSetNames.size() << " IP sets" << flushAnswer;
+        for (std::string ipSetName: ipSetNames) {
+            if (ipSetName.starts_with(_plugin.firewallZoneName())) {
+                answer(DEBUG) << "  Removing IP set " << ipSetName << flushAnswer;
+                auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
+                FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
+                firewalldConfigIpSet.remove();
+            }
+        }
+    }
+}
+
+void BreakDownRootDaemon::applyPermentRulesToRuntime()
+{
+    answer(NOTE) << "Reloading permanent firewall settings" << flushAnswer;
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1 firewall(connection);
+    firewall.reload();
+}
+
+void BreakDownRootDaemon::setRoutingStatus(const std::string &forward)
+{
+    std::ofstream ofs;
+    ofs.open(ArachnePlugin::FN_IP_FORWARD);
+    if (!ofs.is_open()) {
+        throw std::runtime_error("Cannot open " + ArachnePlugin::FN_IP_FORWARD + " for reading");
+    }
+    ofs << forward << std::endl;
+    ofs.close();
+}
+
+void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
+{
+    std::stringstream json;
+    json << rules;
+    boost::property_tree::ptree pt;
+    boost::property_tree::read_json(json, pt);
+
+    std::vector<std::string> incomingRichRules;
+    std::vector<std::string> outgoingRichRules;
+    std::vector<std::string> toHostRichRules;
+    std::vector<std::string> fromHostRichRules;
+    std::map<std::string, std::vector<std::string>> ipSets;
+    auto incomingRules = pt.get_child("incoming");
+    auto outgoingRules = pt.get_child("outgoing");
+    auto icmpRules = pt.get<std::string>("icmp-rules");
+    createRichRules(incomingRules, icmpRules, incomingRichRules, toHostRichRules, ipSets);
+    createRichRules(outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules, ipSets);
+
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1_Config firewallConfig(connection);
+
+    for (auto &[name, entries]: ipSets) {
+        sdbus::Struct<
+        std::string, // version
+        std::string, // name
+        std::string, // description
+        std::string, // type
+        std::map<std::string, std::string>, // options
+        std::vector<std::string> // entries
+        > settings{ "1", name, "", "hash:ip", {}, entries};
+        answer(DEBUG) << "  Adding IPSet " << name << flushAnswer;
+        firewallConfig.addIPSet(name, settings);
+    }
+    answer(NOTE) << "  " << ipSets.size() << " IP sets added." << flushAnswer;
+
+    std::list<std::tuple<const std::string&, std::vector<std::string>& > > t {
+        { _plugin.incomingPolicyName(), incomingRichRules },
+        { _plugin.outgongPolicyName(), outgoingRichRules },
+        { _plugin.toHostPolicyName(), toHostRichRules },
+        { _plugin.fromHostPolicyName(), fromHostRichRules }
+    };
+    for (auto &[name, rules]: t) {
+        auto objPath = firewallConfig.getPolicyByName(name);
+        std::map<std::string, sdbus::Variant> settings;
+        settings["rich_rules"] = sdbus::Variant(rules);
+
+        auto configPolicy = FirewallD1_Config_Policy(connection, objPath);
+        configPolicy.update(settings);
+    }
+
+    answer(NOTE)
+        << "  "
+        << incomingRules.size() << " incoming rules: "
+        << incomingRichRules.size() << " incoming rich rules, "
+        << toHostRichRules.size() << " rich rules to localhost"
+        << " added"
+        << flushAnswer;
+    answer(NOTE)
+        << "  "
+        << outgoingRules.size() << " outgoing rules: "
+        << outgoingRichRules.size() << " outgoing rich rules, "
+        << fromHostRichRules.size() << " rich rules from localhost"
+        << " added"
+        << flushAnswer;
+}
+
+void BreakDownRootDaemon::createRichRules(
+    const boost::property_tree::ptree &ptree,
+    const std::string icmpRules,
+    std::vector<std::string> &richRules,
+    std::vector<std::string> &localRichRules,
+    std::map<std::string, std::vector<std::string>> &ipSets
+)
+{
+    if (icmpRules == "ALLOW_ALL") {
+        answer(DEBUG) << "  Allow ping from everywhere to everywhere" << flushAnswer;
+        richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
+        richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
+
+        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
+        localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
+    }
+
+    for (auto &[_, rule] : ptree) {
+        int id = rule.get<int>("id");
+
+        std::string ipSetSrcName = _plugin.ipSetNameSrc(id);
+        std::string ipSetDstName = _plugin.ipSetNameDst(id);
+        bool hasLocalSrc = false;
+        bool hasLocalDst = false;
+
+        auto srcList = rule.get_child_optional("sources");
+        std::vector<std::string> sources;
+        if (srcList.has_value()) {
+            for (auto &[_, src]: srcList.value()) {
+                std::string ip(src.get_value<std::string>());
+                if (_plugin.myIps().contains(ip))
+                    hasLocalSrc = true;
+                else
+                    sources.push_back(ip);
+            }
+            ipSets[ipSetSrcName] = sources;
+        }
+
+        auto dstList = rule.get_child_optional("destination");
+        std::vector<std::string> destination;
+        if (dstList.has_value()) {
+            for (auto &[_, dst]: dstList.value()) {
+                std::string ip(dst.get_value<std::string>());
+                if (_plugin.myIps().contains(ip))
+                    hasLocalDst = true;
+                else
+                    destination.push_back(ip);
+            }
+            ipSets[ipSetDstName] = destination;
+        }
+
+        std::vector<std::string> whats;
+        if (icmpRules == "ALLOW_ALL_GRANTED") {
+            whats.push_back("icmp-type name=\"echo-request\"");
+            whats.push_back("icmp-type name=\"echo-reply\"");
+        }
+
+        auto srvList = rule.get_child_optional("services");
+        if (srvList.has_value()) {
+            for (auto &[_, srv]: srvList.value()) {
+                whats.push_back("service name=\"" + srv.get_value<std::string>() + "\" ");
+            }
+        }
+
+        auto prtList = rule.get_child_optional("ports");
+        if (prtList.has_value()) {
+            for (auto &[_, prt]: prtList.value()) {
+                std::vector<std::string> splitPort;
+                boost::split(splitPort, prt.get_value<std::string>(), boost::is_any_of("/"));
+                whats.push_back("port port=\"" + splitPort[0] + "\" protocol=\"" + splitPort[1] + "\" ");
+            }
+        }
+
+        for (auto &what: whats) {
+            std::stringstream richRule;
+            richRule << "rule family=\"ipv4\" ";
+            if (srcList.has_value())
+                richRule << "source ipset=\"" << ipSetSrcName << "\" ";
+            if (dstList.has_value())
+                richRule << "destination ipset=\"" << ipSetDstName << "\" ";
+            richRule << what << " accept";
+            answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+            richRules.push_back(richRule.str());
+        }
+
+        if (hasLocalDst) {
+            for (auto &what: whats) {
+                std::stringstream richRule;
+                richRule << "rule family=\"ipv4\" ";
+                if (srcList.has_value())
+                    richRule << "source ipset=\"" << ipSetSrcName << "\" ";
+                richRule << what << " accept";
+                answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+                localRichRules.push_back(richRule.str());
+            }
+        }
+
+        if (hasLocalSrc) {
+            for (auto &what: whats) {
+                std::stringstream richRule;
+                richRule << "rule family=\"ipv4\" ";
+                if (dstList.has_value())
+                    richRule << "destination ipset=\"" << ipSetDstName << "\" ";
+                richRule << what << " accept";
+                answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+                localRichRules.push_back(richRule.str());
+            }
+        }
+    }
 }
