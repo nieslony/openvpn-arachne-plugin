@@ -2,7 +2,7 @@ ACLOCAL_AMFLAGS = -I m4
 plugin_LTLIBRARIES = arachne.la
 arachne_la_CXXFLAGS = -I ${buildir}/src
 arachne_la_LDFLAGS = -module -avoid-version -shared
-arachne_la_LIBADD = -lboost_system -lboost_regex -lboost_iostreams -lsdbus-c++
+arachne_la_LIBADD = -lboost_system -lboost_regex -lboost_iostreams -lboost_json -lsdbus-c++
 arachne_la_SOURCES = \
         main.cpp \
         ArachneLogger.cpp \

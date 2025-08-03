@@ -12,8 +12,6 @@
 #error "Cannot include openvpn-plugin.h"
 #endif
 
-#include <boost/property_tree/ptree.hpp>
-
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
@@ -28,6 +26,8 @@
 
 class Url;
 class ArachnePlugin;
+
+namespace boost { namespace json { class value; }}
 
 enum IcmpRules {
     ALLOW_ALL,
@@ -103,16 +103,16 @@ private:
         const std::string &authentication
     );
     void insertRichRules(
-        const boost::property_tree::ptree::value_type &node,
+        const boost::json::value &node,
         std::set<std::string> &forwardingRules,
         std::set<std::string> &localRules,
         const std::string &clientIp = ""
     );
-    void readJson(const Url &url, boost::property_tree::ptree &json);
+    void readJson(const Url &url, boost::json::value &json);
     void addRoute(int fd, const std::string &address, const std::string &mask);
     void removeRoute(int fd, const std::string &address, const std::string &mask);
     std::string makeBearerAuth();
-    void forceIpCleanup();
+    //void forceIpCleanup();
 };
 
 #endif

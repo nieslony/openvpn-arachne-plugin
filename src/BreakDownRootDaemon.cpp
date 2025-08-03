@@ -2,15 +2,13 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
 
+#include <boost/json.hpp>
+#include <boost/algorithm/string.hpp>
+
 #include <cstdint>
 #include <ostream>
 #include <fstream>
 #include <tuple>
-
-#include <boost/algorithm/string.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
-
 #include <cstdio>
 #include <cstdlib>
 
@@ -59,8 +57,12 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
                     setRoutingStatus(param);
                     break;
                 case UPDATE_FIREWALL_RULES:
-                    _logger.debug() << "Updat Firewall Rules" << param << std::flush;
+                    _logger.debug() << "Update Firewall Rules" << param << std::flush;
                     updateFirewallRules(param);
+                    break;
+                case FORCE_IPSET_CLEANUP:
+                    _logger.debug() << "Force removal of client IP " << param << " from IP sets" << std::flush;
+                    forceIpSetCleanup(param);
                     break;
                 case EXIT:
                     _logger.note() << "Exiting event loop" << std::flush;
@@ -212,19 +214,19 @@ void BreakDownRootDaemon::setRoutingStatus(const std::string &forward)
 
 void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
 {
-    std::stringstream json;
-    json << rules;
-    boost::property_tree::ptree pt;
-    boost::property_tree::read_json(json, pt);
+    std::stringstream str(rules);
+    auto json = boost::json::parse(str);
 
     std::vector<std::string> incomingRichRules;
     std::vector<std::string> outgoingRichRules;
     std::vector<std::string> toHostRichRules;
     std::vector<std::string> fromHostRichRules;
     std::map<std::string, std::vector<std::string>> ipSets;
-    auto incomingRules = pt.get_child("incoming");
-    auto outgoingRules = pt.get_child("outgoing");
-    auto icmpRules = pt.get<std::string>("icmp-rules");
+    json.at("incoming");
+    auto incomingRules = json.at("incoming");
+    auto outgoingRules = json.at("outgoing");
+    auto icmpRules = json.at("icmp-rules").as_string().c_str();
+
     createRichRules(incomingRules, icmpRules, incomingRichRules, toHostRichRules, ipSets);
     createRichRules(outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules, ipSets);
 
@@ -260,16 +262,22 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
         configPolicy.update(settings);
     }
 
+    _logger.debug()
+        << "Added incoming rules: " << incomingRules
+        << std::flush;
     answer(NOTE)
         << "  "
-        << incomingRules.size() << " incoming rules: "
+        << incomingRules.as_array().size() << " incoming rules: "
         << incomingRichRules.size() << " incoming rich rules, "
         << toHostRichRules.size() << " rich rules to localhost"
         << " added"
         << flushAnswer;
+    _logger.debug()
+        << "Added outgoing rules: " << outgoingRules
+        << std::flush;
     answer(NOTE)
         << "  "
-        << outgoingRules.size() << " outgoing rules: "
+        << outgoingRules.as_array().size() << " outgoing rules: "
         << outgoingRichRules.size() << " outgoing rich rules, "
         << fromHostRichRules.size() << " rich rules from localhost"
         << " added"
@@ -277,7 +285,7 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
 }
 
 void BreakDownRootDaemon::createRichRules(
-    const boost::property_tree::ptree &ptree,
+    const boost::json::value &json,
     const std::string icmpRules,
     std::vector<std::string> &richRules,
     std::vector<std::string> &localRichRules,
@@ -293,19 +301,20 @@ void BreakDownRootDaemon::createRichRules(
         localRichRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
     }
 
-    for (auto &[_, rule] : ptree) {
-        int id = rule.get<int>("id");
-
+    _logger.debug() << "Creating rich rules from " << json << std::flush;
+    for (const boost::json::value &rule: json.as_array()) {
+        int id = rule.at("id").as_int64();
         std::string ipSetSrcName = _plugin.ipSetNameSrc(id);
         std::string ipSetDstName = _plugin.ipSetNameDst(id);
         bool hasLocalSrc = false;
         bool hasLocalDst = false;
 
-        auto srcList = rule.get_child_optional("sources");
+        auto *srcList = rule.as_object().if_contains("sources");
         std::vector<std::string> sources;
-        if (srcList.has_value()) {
-            for (auto &[_, src]: srcList.value()) {
-                std::string ip(src.get_value<std::string>());
+        if (srcList != NULL) {
+            _logger.debug() << "Found sources: " << *srcList << std::flush;
+            for (auto &src: srcList->as_array()) {
+                std::string ip(src.as_string().c_str());
                 if (_plugin.myIps().contains(ip))
                     hasLocalSrc = true;
                 else
@@ -314,11 +323,13 @@ void BreakDownRootDaemon::createRichRules(
             ipSets[ipSetSrcName] = sources;
         }
 
-        auto dstList = rule.get_child_optional("destination");
+
+        auto *dstList = rule.as_object().if_contains("destination");
         std::vector<std::string> destination;
-        if (dstList.has_value()) {
-            for (auto &[_, dst]: dstList.value()) {
-                std::string ip(dst.get_value<std::string>());
+        if (dstList != NULL) {
+            _logger.debug() << "Found destination: " << *dstList << std::flush;
+            for (auto &dst: dstList->as_array()) {
+                std::string ip(dst.as_string().c_str());
                 if (_plugin.myIps().contains(ip))
                     hasLocalDst = true;
                 else
@@ -333,18 +344,22 @@ void BreakDownRootDaemon::createRichRules(
             whats.push_back("icmp-type name=\"echo-reply\"");
         }
 
-        auto srvList = rule.get_child_optional("services");
-        if (srvList.has_value()) {
-            for (auto &[_, srv]: srvList.value()) {
-                whats.push_back("service name=\"" + srv.get_value<std::string>() + "\" ");
+        auto srvList = rule.as_object().if_contains("services");
+        if (srvList != NULL) {
+            _logger.debug() << "Found services: " << *srvList << std::flush;
+            for (auto &srv: srvList->as_array()) {
+                boost::json::string s = srv.as_string();
+
+                whats.push_back("service name=\"" + std::string(srv.as_string().c_str()) + "\" ");
             }
         }
 
-        auto prtList = rule.get_child_optional("ports");
-        if (prtList.has_value()) {
-            for (auto &[_, prt]: prtList.value()) {
+        auto prtList = rule.as_object().if_contains("ports");
+        if (prtList != NULL) {
+            _logger.debug() << "Found ports: " << *prtList << std::flush;
+            for (auto &prt: prtList->as_array()) {
                 std::vector<std::string> splitPort;
-                boost::split(splitPort, prt.get_value<std::string>(), boost::is_any_of("/"));
+                boost::split(splitPort, prt.as_string().c_str(), boost::is_any_of("/"));
                 whats.push_back("port port=\"" + splitPort[0] + "\" protocol=\"" + splitPort[1] + "\" ");
             }
         }
@@ -352,9 +367,9 @@ void BreakDownRootDaemon::createRichRules(
         for (auto &what: whats) {
             std::stringstream richRule;
             richRule << "rule family=\"ipv4\" ";
-            if (srcList.has_value())
+            if (srcList != NULL)
                 richRule << "source ipset=\"" << ipSetSrcName << "\" ";
-            if (dstList.has_value())
+            if (dstList != NULL)
                 richRule << "destination ipset=\"" << ipSetDstName << "\" ";
             richRule << what << " accept";
             answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
@@ -365,7 +380,7 @@ void BreakDownRootDaemon::createRichRules(
             for (auto &what: whats) {
                 std::stringstream richRule;
                 richRule << "rule family=\"ipv4\" ";
-                if (srcList.has_value())
+                if (srcList != NULL)
                     richRule << "source ipset=\"" << ipSetSrcName << "\" ";
                 richRule << what << " accept";
                 answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
@@ -377,12 +392,62 @@ void BreakDownRootDaemon::createRichRules(
             for (auto &what: whats) {
                 std::stringstream richRule;
                 richRule << "rule family=\"ipv4\" ";
-                if (dstList.has_value())
+                if (dstList != NULL)
                     richRule << "destination ipset=\"" << ipSetDstName << "\" ";
                 richRule << what << " accept";
                 answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
                 localRichRules.push_back(richRule.str());
             }
+        }
+    }
+    _logger.debug() << "Creating rich rukes (done)" << json << std::flush;
+}
+
+void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
+{
+    auto param = boost::json::parse(vpnIp_ipSetIds);
+    std::string vpnIp(param.at("vpnIp").as_string().c_str());
+    std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
+    std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
+
+    answer(NOTE)
+        << "Something went wrong. Enforcing removal of IP " << vpnIp << " from IP sets."
+        << flushAnswer;
+    std::unique_ptr<sdbus::IConnection> connection;
+    try {
+        connection = sdbus::createSystemBusConnection();
+    }
+    catch (sdbus::Error &ex) {
+        _logger.warning()
+        << " Cannot get DBUS connection: " << ex.getMessage()
+        << " No cleanup possible."
+        << std::flush;
+        return;
+    }
+    FirewallD1_IpSet firewallIpSet(connection);
+    for (long id: incomingIds) {
+        std::string ipSetName = _plugin.ipSetNameSrc(id);
+        try {
+            firewallIpSet.addEntry(ipSetName, vpnIp);
+            answer(WARNING)
+                << "  " << vpnIp << " removed from IP set " << ipSetName
+                << flushAnswer;
+        }
+        catch (const sdbus::Error &ex) {
+            answer(WARNING)
+                << "  Cannot remove " << vpnIp << " from IP set " << ipSetName << ": "
+                << ex.getMessage() << " (ignoring)"
+                << flushAnswer;
+        }
+    }
+    for (long id: outgoingIds) {
+        try {
+            firewallIpSet.addEntry(_plugin.ipSetNameDst(id), vpnIp);
+        }
+        catch (const sdbus::Error &ex) {
+            answer(WARNING)
+                << ex.getMessage() << " (ignoring)"
+                << flushAnswer;
         }
     }
 }

@@ -22,6 +22,7 @@ AX_BOOST_BASE
 AX_BOOST_SYSTEM
 AX_BOOST_REGEX
 AX_BOOST_IOSTREAMS
+AX_BOOST_JSON
 
 PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 1.2],,
     AC_MSG_ERROR([You need the sdbus-c++ library (version 1.0 or newer)]

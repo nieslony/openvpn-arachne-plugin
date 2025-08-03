@@ -1,5 +1,6 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
+#include "BreakDownRootDaemon.h"
 #include "Config.h"
 #include "Http.h"
 
@@ -10,6 +11,7 @@
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/ostream_iterator.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#include <boost/json.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -22,7 +24,6 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/foreach.hpp>
-#include <boost/property_tree/json_parser.hpp>
 #include <boost/regex.hpp>
 
 #include <sdbus-c++/Error.h>
@@ -30,6 +31,8 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <array>
+#include <fstream>
 
 #include <net/route.h>
 #include <sys/socket.h>
@@ -199,11 +202,11 @@ void ClientSession::loginUser(
         throw PluginException("Authentication failed", ex.what());
     }
 
-    boost::property_tree::ptree json;
+    boost::json::value json;
     try {
         std::istringstream iss(body);
-        boost::property_tree::read_json(iss, json);
-        _apiToken = json.get<std::string>("apiAuthToken");
+        iss >> json;
+        _apiToken = json.at("apiAuthToken").as_string().c_str();
     }
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());
@@ -230,14 +233,14 @@ void ClientSession::addVpnIpToIpSets()
     }
 
     _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
-    boost::property_tree::ptree json;
+    boost::json::value json;
     readJson(_plugin.firewallUrlUser(), json);
 
-    for (auto &[_, id]: json.get_child("incoming")) {
-        _incomingIds.push_back(id.get_value<long>());
+    for (auto id: json.at("incoming").as_array()) {
+        _incomingIds.push_back(id.as_int64());
     }
-    for (auto &[_, id]: json.get_child("outgoing")) {
-        _outgoingIds.push_back(id.get_value<long>());
+    for (auto id: json.at("outgoing").as_array()) {
+        _outgoingIds.push_back(id.as_int64());
     }
 
     try {
@@ -251,7 +254,15 @@ void ClientSession::addVpnIpToIpSets()
         }
     }
     catch (const sdbus::Error &ex) {
-        forceIpCleanup();
+        auto param = boost::json::object{
+            {"clientIp", _vpnIp},
+            {"outgoingIds", boost::json::array(_outgoingIds.begin(), _outgoingIds.end())},
+            {"incomingIds", boost::json::array(_incomingIds.begin(), _incomingIds.end())}
+        };
+        std::stringstream str;
+        str << param;
+
+        _plugin.execCommand(this, BreakDownRootDaemon::FORCE_IPSET_CLEANUP, str.str());
         throw PluginException("Cannot update IP set", ex.what());
     }
 
@@ -260,49 +271,6 @@ void ClientSession::addVpnIpToIpSets()
         << _incomingIds.size() << " incoming rule, "
         << _outgoingIds.size() << " outgoing rules"
         << std::flush;
-}
-
-void ClientSession::forceIpCleanup()
-{
-    _logger.note()
-        << "Something went wrong. Enforcing removal of IP " <<_vpnIp << " from IP sets."
-        << std::flush;
-    std::unique_ptr<sdbus::IConnection> connection;
-    try {
-        connection = sdbus::createSystemBusConnection();
-    }
-    catch (sdbus::Error &ex) {
-        _logger.warning()
-            << "  Cannot get DBUS connection: " << ex.getMessage()
-            << " No cleanup possible."
-            << std::flush;
-        return;
-    }
-    FirewallD1_IpSet firewallIpSet(connection);
-    for (long id: _incomingIds) {
-        std::string ipSetName = _plugin.ipSetNameSrc(id);
-        try {
-            firewallIpSet.addEntry(ipSetName, _vpnIp);
-            _logger.warning() << "  " <<_vpnIp << " removed from IP set " << ipSetName
-            << std::flush;
-        }
-        catch (const sdbus::Error &ex) {
-            _logger.warning()
-                << "  Cannot remove " << _vpnIp << "from IP set " << ipSetName << ": "
-                << ex.getMessage() << " (ignoring)"
-                << std::flush;
-        }
-    }
-    for (long id: _outgoingIds) {
-        try {
-            firewallIpSet.addEntry(_plugin.ipSetNameDst(id), _vpnIp);
-        }
-        catch (const sdbus::Error &ex) {
-            _logger.warning()
-            << ex.getMessage() << " (ignoring)"
-            << std::flush;
-        }
-    }
 }
 
 void ClientSession::removeVpnIpFromIpSets()
@@ -320,7 +288,16 @@ void ClientSession::removeVpnIpFromIpSets()
         }
     }
     catch (const sdbus::Error &ex) {
-        forceIpCleanup();
+        auto param = boost::json::object{
+            {"clientIp", _vpnIp},
+            {"outgoingIds", boost::json::array(_outgoingIds.begin(), _outgoingIds.end())},
+            {"incomingIds", boost::json::array(_incomingIds.begin(), _incomingIds.end())}
+        };
+        std::stringstream str;
+        str << param;
+
+        _plugin.execCommand(this, BreakDownRootDaemon::FORCE_IPSET_CLEANUP, str.str());
+
         throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }
 
@@ -332,20 +309,20 @@ void ClientSession::removeVpnIpFromIpSets()
 }
 
 void ClientSession::insertRichRules(
-    const boost::property_tree::ptree::value_type &node,
+    const boost::json::value &node,
     std::set<std::string> &forwardingRules,
     std::set<std::string> &localRules,
     const std::string &clientIp
 )
 {
-    boost::optional<std::string> value;
+    const boost::json::value *value ;
     std::stringstream rule;
 
     std::string destination;
-    value = node.second.get_optional<std::string>("destinationAddress");
-    if (value.has_value()) {
-        if (!_plugin.myIps().contains(value.value()))
-            destination = " destination address=\"" + value.value() + "\"";
+    value = node.as_object().if_contains("destinationAddress");
+    if (value != NULL) {
+        if (!_plugin.myIps().contains(value->as_string().c_str()))
+            destination = " destination address=\"" + std::string(value->as_string().c_str()) + "\"";
     }
 
     rule << "rule family=\"ipv4\"";
@@ -353,16 +330,16 @@ void ClientSession::insertRichRules(
         rule << " source address=\"" << clientIp << "\"";
     rule << destination;
 
-    value = node.second.get_optional<std::string>("serviceName");
+    value = node.as_object().if_contains("serviceName");
     bool isEverything = true;
-    if (value.has_value()) {
-        rule << " service name=\"" << value.value() << "\"";
+    if (value != NULL) {
+        rule << " service name=\"" << *value << "\"";
         isEverything = false;
     }
 
-    value = node.second.get_optional<std::string>("port");
-    if (value.has_value()) {
-        rule << " port " << value.value();
+    value = node.as_object().if_contains("port");
+    if (value != NULL) {
+        rule << " port " << *value;
         isEverything = false;
     }
 
@@ -397,7 +374,7 @@ void ClientSession::insertRichRules(
 
 void ClientSession::readJson(
     const Url &url,
-    boost::property_tree::ptree &json
+    boost::json::value &json
 ) {
     _logger.debug() << "  Getting rules from " << url.str() << std::flush;
     std::string body;
@@ -413,7 +390,7 @@ void ClientSession::readJson(
 
     try {
         std::istringstream iss(body);
-        boost::property_tree::read_json(iss, json);
+        json = boost::json::parse(iss);
     }
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());

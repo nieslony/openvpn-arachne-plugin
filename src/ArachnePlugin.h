@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <set>
 #include <list>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/iostreams/device/file_descriptor.hpp>
 
@@ -53,6 +52,8 @@ public:
     void pluginDown(const char *argv[], const char *envp[], ClientSession*);
     void clientConnect(const char *argv[], const char *envp[], ClientSession*);
     void clientDisconnect(const char *argv[], const char *envp[], ClientSession*);
+
+    void execCommand(ClientSession*, BreakDownRootDaemon::Command, const std::string &param = "");
 
     bool enableFirewall() const { return _enableFirewall; }
 
@@ -120,7 +121,6 @@ private:
 
     void parseConfigFile(const openvpn_plugin_args_open_in *in_args);
     void startBackgroundProcess();
-    void execCommand(ClientSession*, BreakDownRootDaemon::Command, const std::string &param = "");
 };
 
 #endif

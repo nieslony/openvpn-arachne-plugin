@@ -5,7 +5,6 @@
 
 #include <boost/iostreams/stream.hpp>
 #include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/property_tree/ptree.hpp>
 
 #include <ostream>
 #include <map>
@@ -22,6 +21,8 @@ class ClientSession;
 class ArachnePlugin;
 class ArachneLogger;
 
+namespace boost { namespace json { class value; }}
+
 class BreakDownRootDaemon {
 public:
     enum Command : uint8_t {
@@ -30,6 +31,7 @@ public:
         APPLY_PERMANENT_RULES_TO_RUNTIME,
         SET_ROUTING_STATUS,
         UPDATE_FIREWALL_RULES,
+        FORCE_IPSET_CLEANUP,
         EXIT,
     };
 
@@ -62,7 +64,7 @@ private:
     static std::ostream &flushAnswer(std::ostream &str) { return str << DELIM << std::flush; }
 
     void createRichRules(
-        const boost::property_tree::ptree &ptree,
+        const boost::json::value &json,
         const std::string icmpRules,
         std::vector<std::string> &richRules,
         std::vector<std::string> &localRichRules,
@@ -73,6 +75,7 @@ private:
     void applyPermentRulesToRuntime();
     void setRoutingStatus(const std::string &forward);
     void updateFirewallRules(const std::string &rules);
+    void forceIpSetCleanup(const std::string &vpnIp_ipSetIds);
 };
 
 #endif

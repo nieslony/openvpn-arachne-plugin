@@ -7,8 +7,6 @@
 #include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
 #include <cerrno>
 #include <cstring>
 #include <csignal>
@@ -111,7 +109,7 @@ void ArachnePlugin::startBackgroundProcess()
 
 ArachnePlugin::~ArachnePlugin()
 {
-    _logger.note() << "Kill daemon process " <<_backgroundPid << std::flush;
+    _logger.note() << "Terminating background process" << std::flush;
     execCommand(NULL, BreakDownRootDaemon::EXIT);
     waitpid(_backgroundPid, NULL, 0);
 }
