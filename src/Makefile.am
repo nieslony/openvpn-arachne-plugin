@@ -7,9 +7,9 @@ arachne_la_SOURCES = \
         main.cpp \
         ArachneLogger.cpp \
         ArachnePlugin.cpp \
+        BreakDownRootDaemon.cpp \
         ClientSession.cpp \
         Config.cpp \
-        BreakDownRootDaemon.cpp \
         FirewallD1.cpp \
         Url.cpp
 
@@ -33,9 +33,9 @@ endif
 EXTRA_DIST = ${DBUS_GENERATED_1} ${DBUS_GENERATED_2} \
 	ArachneLogger.h \
         ArachnePlugin.h \
+        BreakDownRootDaemon.h \
         ClientSession.h \
         Config.h \
-        BreakDownRootDaemon.h \
         FirewallD1.h \
         Http.h \
         Url.h

@@ -53,7 +53,7 @@ public:
     void clientConnect(const char *argv[], const char *envp[], ClientSession*);
     void clientDisconnect(const char *argv[], const char *envp[], ClientSession*);
 
-    void execCommand(ClientSession*, BreakDownRootDaemon::Command, const std::string &param = "");
+    void execCommand(ClientSession*, BreakDownRootCommand, const std::string &param = "");
 
     bool enableFirewall() const { return _enableFirewall; }
 

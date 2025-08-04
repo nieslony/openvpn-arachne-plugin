@@ -262,7 +262,7 @@ void ClientSession::addVpnIpToIpSets()
         std::stringstream str;
         str << param;
 
-        _plugin.execCommand(this, BreakDownRootDaemon::FORCE_IPSET_CLEANUP, str.str());
+        _plugin.execCommand(this, BreakDownRootCommand::FORCE_IPSET_CLEANUP, str.str());
         throw PluginException("Cannot update IP set", ex.what());
     }
 
@@ -296,7 +296,7 @@ void ClientSession::removeVpnIpFromIpSets()
         std::stringstream str;
         str << param;
 
-        _plugin.execCommand(this, BreakDownRootDaemon::FORCE_IPSET_CLEANUP, str.str());
+        _plugin.execCommand(this, BreakDownRootCommand::FORCE_IPSET_CLEANUP, str.str());
 
         throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }

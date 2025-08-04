@@ -110,7 +110,7 @@ void ArachnePlugin::startBackgroundProcess()
 ArachnePlugin::~ArachnePlugin()
 {
     _logger.note() << "Terminating background process" << std::flush;
-    execCommand(NULL, BreakDownRootDaemon::EXIT);
+    execCommand(NULL, BreakDownRootCommand::EXIT);
     waitpid(_backgroundPid, NULL, 0);
 }
 
@@ -190,14 +190,14 @@ void ArachnePlugin::setRouting(ClientSession *session)
         _savedIpForward = getRoutingStatus();
         if (_savedIpForward == "0") {
             session->logger().note() << "Enabling IP forwarding" << std::flush;
-            execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, "1");
+            execCommand(session, BreakDownRootCommand::SET_ROUTING_STATUS, "1");
             //setRoutingStatus("1");
         } else {
             session->logger().note() << "IP forwarding already enabled" << std::flush;
         }
     } else if (_enableRouting == "ENABLE") {
         session->logger().note() << "Enabling IP forwarding" << std::flush;
-        execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, "1");
+        execCommand(session, BreakDownRootCommand::SET_ROUTING_STATUS, "1");
         //setRoutingStatus("1");
     } else if (_enableRouting == "OFF") {
         session->logger().note() << "Don't enable IP forwarding" << std::flush;
@@ -212,7 +212,7 @@ void ArachnePlugin::restoreRouting(ClientSession *session)
         session->logger().note()
             << "Restoring IP forwading to " << _savedIpForward
             << std::flush;
-        execCommand(session, BreakDownRootDaemon::SET_ROUTING_STATUS, _savedIpForward);
+        execCommand(session, BreakDownRootCommand::SET_ROUTING_STATUS, _savedIpForward);
         //setRoutingStatus(_savedIpForward);
     } else {
         session->logger().note() << "Leaving routing untouched" << std::flush;
@@ -303,15 +303,15 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 
     if (_enableFirewall) {
         createFirewallZone(session);
-        execCommand(session, BreakDownRootDaemon::CLEANUP_POLICIES);
+        execCommand(session, BreakDownRootCommand::CLEANUP_POLICIES);
 
         std::ifstream ifs(_firewallRulesPath);
         std::stringstream firewallRules;
         firewallRules << ifs.rdbuf();
-        execCommand(session, BreakDownRootDaemon::UPDATE_FIREWALL_RULES, firewallRules.str());
+        execCommand(session, BreakDownRootCommand::UPDATE_FIREWALL_RULES, firewallRules.str());
 
         //loadFirewallRules(session);
-        execCommand(session, BreakDownRootDaemon::APPLY_PERMANENT_RULES_TO_RUNTIME);
+        execCommand(session, BreakDownRootCommand::APPLY_PERMANENT_RULES_TO_RUNTIME);
     }
     else
         session->logger().note() << "Firewall is disabled" << std::flush;
@@ -322,8 +322,8 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
     session->logger() << "Bringing plugin down..." << std::flush;
-    execCommand(session, BreakDownRootDaemon::CLEANUP_POLICIES);
-    execCommand(session, BreakDownRootDaemon::APPLY_PERMANENT_RULES_TO_RUNTIME);
+    execCommand(session, BreakDownRootCommand::CLEANUP_POLICIES);
+    execCommand(session, BreakDownRootCommand::APPLY_PERMANENT_RULES_TO_RUNTIME);
     restoreRouting(session);
     session->logger() << "Plugin is down" << std::flush;
 }
@@ -433,7 +433,7 @@ std::string ArachnePlugin::ipSetNameDst(long id) const
     return name.str();
 }
 
-void ArachnePlugin::execCommand(ClientSession* session, BreakDownRootDaemon::Command command, const std::string &param)
+void ArachnePlugin::execCommand(ClientSession* session, BreakDownRootCommand command, const std::string &param)
 {
     BreakDownRootDaemon::execCommand(
         _backgroundCommandChannel, _backgroundReplyChannel,

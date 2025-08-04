@@ -4,6 +4,7 @@
 
 #include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/describe/enum_to_string.hpp>
 
 #include <cstdint>
 #include <ostream>
@@ -37,46 +38,41 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
         _reader >> command;
         std::getline(_reader, param, DELIM);
 
-        _logger.debug() << "Got command: " << std::to_string(command) << "(" << param << ")" << std::flush;
+        BreakDownRootCommand cmd = static_cast<BreakDownRootCommand>(command);
+        _logger.debug() << "Got command: " << boost::describe::enum_to_string(cmd, "") << "(" << param << ")" << std::flush;
         try {
-            switch (static_cast<Command>(command)) {
-                case PING:
-                    _logger.debug() << "Ping" << std::flush;
-                    sendAnswer(DEBUG, "Pong: " + param);
+            switch (cmd) {
+                case BreakDownRootCommand::PING:
+                    sendAnswer(BreakDownRootAnswer::DEBUG, "Pong: " + param);
                     break;
-                case CLEANUP_POLICIES:
-                    _logger.debug() << "Cleanup Policies" << std::flush;
+                case BreakDownRootCommand::CLEANUP_POLICIES:
                     cleanupPolicies();
                     break;
-                case APPLY_PERMANENT_RULES_TO_RUNTIME:
-                    _logger.debug() << "Apply permanent rules to runtime" << std::flush;
+                case BreakDownRootCommand::APPLY_PERMANENT_RULES_TO_RUNTIME:
                     applyPermentRulesToRuntime();
                     break;
-                case SET_ROUTING_STATUS:
-                    _logger.debug() << "Set routing status " << param << std::flush;
+                case BreakDownRootCommand::SET_ROUTING_STATUS:
                     setRoutingStatus(param);
                     break;
-                case UPDATE_FIREWALL_RULES:
-                    _logger.debug() << "Update Firewall Rules" << param << std::flush;
+                case BreakDownRootCommand::UPDATE_FIREWALL_RULES:
                     updateFirewallRules(param);
                     break;
-                case FORCE_IPSET_CLEANUP:
-                    _logger.debug() << "Force removal of client IP " << param << " from IP sets" << std::flush;
+                case BreakDownRootCommand::FORCE_IPSET_CLEANUP:
                     forceIpSetCleanup(param);
                     break;
-                case EXIT:
+                case BreakDownRootCommand::EXIT:
                     _logger.note() << "Exiting event loop" << std::flush;
                     exit(EXIT_SUCCESS);
                     break;
                 default:
                     _logger.warning() << "Invalid command: " << command << std::flush;
-                    sendAnswer(WARNING, "Invalid command");
+                    sendAnswer(BreakDownRootAnswer::WARNING, "Invalid command");
             }
-            sendAnswer(SUCCESS);
+            sendAnswer(BreakDownRootAnswer::SUCCESS);
         }
         catch (PluginException &ex) {
             _logger.warning() << "Caught exception: " << ex.what() << std::flush;
-            sendAnswer(EXCEPTION, ex.what());
+            sendAnswer(BreakDownRootAnswer::EXCEPTION, ex.what());
         }
     }
     _logger.warning() << "Event loop unexped left" << std::flush;
@@ -84,9 +80,9 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
 
 void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream &replyStream,
                                       ArachneLogger &logger,
-                                      Command command, const std::string &param)
+                                      BreakDownRootCommand command, const std::string &param)
 {
-    logger.debug() << "Sending " << command << std::flush;
+    logger.debug() << "Sending " << boost::describe::enum_to_string(command, "") << std::flush;
     commandStream << static_cast<uint8_t>(command)
         << param << DELIM
         << std::flush;
@@ -95,28 +91,29 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
         std::string replyStr;
 
         replyStream >> reply;
-        logger.debug() << "Got reply: " << std::to_string(reply) << std::flush;
-        switch (static_cast<Answer>(reply)) {
-            case SUCCESS:
+        BreakDownRootAnswer answer = static_cast<BreakDownRootAnswer>(reply);
+        logger.debug() << "Got reply (" << boost::describe::enum_to_string(answer, "") << "): ";
+        switch (answer) {
+            case BreakDownRootAnswer::SUCCESS:
                 logger.debug() << "Success" << std::flush;
                 return;
-            case DEBUG:
+            case BreakDownRootAnswer::DEBUG:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.debug() << replyStr << std::flush;
                 break;
-            case NOTE:
+            case BreakDownRootAnswer::NOTE:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.note() << replyStr << std::flush;
                 break;
-            case WARNING:
+            case BreakDownRootAnswer::WARNING:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.warning() << replyStr << std::flush;
                 break;
-            case ERROR:
+            case BreakDownRootAnswer::ERROR:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.error() << replyStr << std::flush;
                 break;
-            case EXCEPTION:
+            case BreakDownRootAnswer::EXCEPTION:
                 std::getline(replyStream, replyStr, DELIM);
                 throw PluginException(replyStr);
             default:
@@ -126,24 +123,24 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
     throw PluginException("Command stream died");
 }
 
-void BreakDownRootDaemon::sendAnswer(Answer answer)
+void BreakDownRootDaemon::sendAnswer(BreakDownRootAnswer answer)
 {
     _writer
-        << static_cast<uint8_t>(answer) << answer
+        << static_cast<uint8_t>(answer)
         << std::flush;
 }
-void BreakDownRootDaemon::sendAnswer(Answer answer, const std::string &msg)
+void BreakDownRootDaemon::sendAnswer(BreakDownRootAnswer answer, const std::string &msg)
 {
     _writer
-        << static_cast<uint8_t>(answer) << answer
+        << static_cast<uint8_t>(answer)
         << msg << DELIM
         << std::flush;
 }
 
-std::ostream &BreakDownRootDaemon::answer(Answer answer)
+std::ostream &BreakDownRootDaemon::answer(BreakDownRootAnswer answer)
 {
     _writer
-        << static_cast<uint8_t>(answer) << answer;
+        << static_cast<uint8_t>(answer);
 
     return _writer;
 }
@@ -151,7 +148,7 @@ std::ostream &BreakDownRootDaemon::answer(Answer answer)
 void BreakDownRootDaemon::cleanupPolicies()
 {
     if (_plugin.enableFirewall()) {
-        answer(NOTE) << "Cleaning up firewall policies for zone '" << _plugin.firewallZoneName() << "'" << flushAnswer;
+        answer(BreakDownRootAnswer::NOTE) << "Cleaning up firewall policies for zone '" << _plugin.firewallZoneName() << "'" << flushAnswer;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1 firewall(connection);
         FirewallD1_Config firewallConfig(connection);
@@ -164,7 +161,7 @@ void BreakDownRootDaemon::cleanupPolicies()
 
         for (std::string policyName: firewallConfig.getPolicyNames()) {
             if (policyName.starts_with(_plugin.firewallZoneName())) {
-                answer(NOTE)
+                answer(BreakDownRootAnswer::NOTE)
                     << "  Removing all rich rules from policy '" << policyName << "'"
                     << flushAnswer;
                 std::vector<std::string> emptyList;
@@ -176,15 +173,15 @@ void BreakDownRootDaemon::cleanupPolicies()
                 firewalldConfigPolicy.update(settings);
             }
             else {
-                answer(DEBUG) << "  Ignoring policy '" << policyName << "'" << flushAnswer;
+                answer(BreakDownRootAnswer::DEBUG) << "  Ignoring policy '" << policyName << "'" << flushAnswer;
             }
         }
 
         auto ipSetNames = firewallConfig.getIPSetNames();
-        answer(NOTE) << "  Removing " << ipSetNames.size() << " IP sets" << flushAnswer;
+        answer(BreakDownRootAnswer::NOTE) << "  Removing " << ipSetNames.size() << " IP sets" << flushAnswer;
         for (std::string ipSetName: ipSetNames) {
             if (ipSetName.starts_with(_plugin.firewallZoneName())) {
-                answer(DEBUG) << "  Removing IP set " << ipSetName << flushAnswer;
+                answer(BreakDownRootAnswer::DEBUG) << "  Removing IP set " << ipSetName << flushAnswer;
                 auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
                 FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
                 firewalldConfigIpSet.remove();
@@ -195,7 +192,7 @@ void BreakDownRootDaemon::cleanupPolicies()
 
 void BreakDownRootDaemon::applyPermentRulesToRuntime()
 {
-    answer(NOTE) << "Reloading permanent firewall settings" << flushAnswer;
+    answer(BreakDownRootAnswer::NOTE) << "Reloading permanent firewall settings" << flushAnswer;
     auto connection = sdbus::createSystemBusConnection();
     FirewallD1 firewall(connection);
     firewall.reload();
@@ -222,7 +219,6 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
     std::vector<std::string> toHostRichRules;
     std::vector<std::string> fromHostRichRules;
     std::map<std::string, std::vector<std::string>> ipSets;
-    json.at("incoming");
     auto incomingRules = json.at("incoming");
     auto outgoingRules = json.at("outgoing");
     auto icmpRules = json.at("icmp-rules").as_string().c_str();
@@ -242,10 +238,10 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
         std::map<std::string, std::string>, // options
         std::vector<std::string> // entries
         > settings{ "1", name, "", "hash:ip", {}, entries};
-        answer(DEBUG) << "  Adding IPSet " << name << flushAnswer;
+        answer(BreakDownRootAnswer::DEBUG) << "  Adding IPSet " << name << flushAnswer;
         firewallConfig.addIPSet(name, settings);
     }
-    answer(NOTE) << "  " << ipSets.size() << " IP sets added." << flushAnswer;
+    answer(BreakDownRootAnswer::NOTE) << "  " << ipSets.size() << " IP sets added." << flushAnswer;
 
     std::list<std::tuple<const std::string&, std::vector<std::string>& > > t {
         { _plugin.incomingPolicyName(), incomingRichRules },
@@ -265,7 +261,7 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
     _logger.debug()
         << "Added incoming rules: " << incomingRules
         << std::flush;
-    answer(NOTE)
+    answer(BreakDownRootAnswer::NOTE)
         << "  "
         << incomingRules.as_array().size() << " incoming rules: "
         << incomingRichRules.size() << " incoming rich rules, "
@@ -275,7 +271,7 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
     _logger.debug()
         << "Added outgoing rules: " << outgoingRules
         << std::flush;
-    answer(NOTE)
+    answer(BreakDownRootAnswer::NOTE)
         << "  "
         << outgoingRules.as_array().size() << " outgoing rules: "
         << outgoingRichRules.size() << " outgoing rich rules, "
@@ -293,7 +289,7 @@ void BreakDownRootDaemon::createRichRules(
 )
 {
     if (icmpRules == "ALLOW_ALL") {
-        answer(DEBUG) << "  Allow ping from everywhere to everywhere" << flushAnswer;
+        answer(BreakDownRootAnswer::DEBUG) << "  Allow ping from everywhere to everywhere" << flushAnswer;
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
 
@@ -303,6 +299,7 @@ void BreakDownRootDaemon::createRichRules(
 
     _logger.debug() << "Creating rich rules from " << json << std::flush;
     for (const boost::json::value &rule: json.as_array()) {
+        _logger.debug() << "Processing " << rule << std::flush;
         int id = rule.at("id").as_int64();
         std::string ipSetSrcName = _plugin.ipSetNameSrc(id);
         std::string ipSetDstName = _plugin.ipSetNameDst(id);
@@ -372,7 +369,7 @@ void BreakDownRootDaemon::createRichRules(
             if (dstList != NULL)
                 richRule << "destination ipset=\"" << ipSetDstName << "\" ";
             richRule << what << " accept";
-            answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+            answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
             richRules.push_back(richRule.str());
         }
 
@@ -383,7 +380,7 @@ void BreakDownRootDaemon::createRichRules(
                 if (srcList != NULL)
                     richRule << "source ipset=\"" << ipSetSrcName << "\" ";
                 richRule << what << " accept";
-                answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+                answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule (local dest) " << richRule.str() << flushAnswer;
                 localRichRules.push_back(richRule.str());
             }
         }
@@ -395,22 +392,22 @@ void BreakDownRootDaemon::createRichRules(
                 if (dstList != NULL)
                     richRule << "destination ipset=\"" << ipSetDstName << "\" ";
                 richRule << what << " accept";
-                answer(DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+                answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule (local src) " << richRule.str() << flushAnswer;
                 localRichRules.push_back(richRule.str());
             }
         }
     }
-    _logger.debug() << "Creating rich rukes (done)" << json << std::flush;
+    _logger.debug() << "Creating rich rules (done)" << json << std::flush;
 }
 
 void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
 {
     auto param = boost::json::parse(vpnIp_ipSetIds);
-    std::string vpnIp(param.at("vpnIp").as_string().c_str());
+    std::string vpnIp(param.at("clientIp").as_string().c_str());
     std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
     std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
 
-    answer(NOTE)
+    answer(BreakDownRootAnswer::NOTE)
         << "Something went wrong. Enforcing removal of IP " << vpnIp << " from IP sets."
         << flushAnswer;
     std::unique_ptr<sdbus::IConnection> connection;
@@ -429,12 +426,12 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
         std::string ipSetName = _plugin.ipSetNameSrc(id);
         try {
             firewallIpSet.addEntry(ipSetName, vpnIp);
-            answer(WARNING)
+            answer(BreakDownRootAnswer::WARNING)
                 << "  " << vpnIp << " removed from IP set " << ipSetName
                 << flushAnswer;
         }
         catch (const sdbus::Error &ex) {
-            answer(WARNING)
+            answer(BreakDownRootAnswer::WARNING)
                 << "  Cannot remove " << vpnIp << " from IP set " << ipSetName << ": "
                 << ex.getMessage() << " (ignoring)"
                 << flushAnswer;
@@ -445,7 +442,7 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
             firewallIpSet.addEntry(_plugin.ipSetNameDst(id), vpnIp);
         }
         catch (const sdbus::Error &ex) {
-            answer(WARNING)
+            answer(BreakDownRootAnswer::WARNING)
                 << ex.getMessage() << " (ignoring)"
                 << flushAnswer;
         }
