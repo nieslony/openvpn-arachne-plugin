@@ -33,6 +33,8 @@ BOOST_DEFINE_FIXED_ENUM_CLASS(
     SET_ROUTING_STATUS,
     UPDATE_FIREWALL_RULES,
     FORCE_IPSET_CLEANUP,
+    ADD_VPN_TO_IP_SETS,
+    REMOVE_VPN_FROM_IP_SETS,
     EXIT
 )
 
@@ -82,6 +84,8 @@ private:
     void setRoutingStatus(const std::string &forward);
     void updateFirewallRules(const std::string &rules);
     void forceIpSetCleanup(const std::string &vpnIp_ipSetIds);
+    void addVpnIpToIpSets(const std::string&);
+    void removeVpnIpFromIpSets(const std::string&);
 };
 
 #endif

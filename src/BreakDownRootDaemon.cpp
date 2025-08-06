@@ -42,25 +42,32 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
         _logger.debug() << "Got command: " << boost::describe::enum_to_string(cmd, "") << "(" << param << ")" << std::flush;
         try {
             switch (cmd) {
-                case BreakDownRootCommand::PING:
+                using enum BreakDownRootCommand;
+                case PING:
                     sendAnswer(BreakDownRootAnswer::DEBUG, "Pong: " + param);
                     break;
-                case BreakDownRootCommand::CLEANUP_POLICIES:
+                case CLEANUP_POLICIES:
                     cleanupPolicies();
                     break;
-                case BreakDownRootCommand::APPLY_PERMANENT_RULES_TO_RUNTIME:
+                case APPLY_PERMANENT_RULES_TO_RUNTIME:
                     applyPermentRulesToRuntime();
                     break;
-                case BreakDownRootCommand::SET_ROUTING_STATUS:
+                case SET_ROUTING_STATUS:
                     setRoutingStatus(param);
                     break;
-                case BreakDownRootCommand::UPDATE_FIREWALL_RULES:
+                case UPDATE_FIREWALL_RULES:
                     updateFirewallRules(param);
                     break;
-                case BreakDownRootCommand::FORCE_IPSET_CLEANUP:
+                case FORCE_IPSET_CLEANUP:
                     forceIpSetCleanup(param);
                     break;
-                case BreakDownRootCommand::EXIT:
+                case ADD_VPN_TO_IP_SETS:
+                    addVpnIpToIpSets(param);
+                    break;
+                case REMOVE_VPN_FROM_IP_SETS:
+                    removeVpnIpFromIpSets(param);
+                    break;
+                case EXIT:
                     _logger.note() << "Exiting event loop" << std::flush;
                     exit(EXIT_SUCCESS);
                     break;
@@ -94,26 +101,27 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
         BreakDownRootAnswer answer = static_cast<BreakDownRootAnswer>(reply);
         logger.debug() << "Got reply (" << boost::describe::enum_to_string(answer, "") << "): ";
         switch (answer) {
-            case BreakDownRootAnswer::SUCCESS:
+            using enum BreakDownRootAnswer;
+            case SUCCESS:
                 logger.debug() << "Success" << std::flush;
                 return;
-            case BreakDownRootAnswer::DEBUG:
+            case DEBUG:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.debug() << replyStr << std::flush;
                 break;
-            case BreakDownRootAnswer::NOTE:
+            case NOTE:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.note() << replyStr << std::flush;
                 break;
-            case BreakDownRootAnswer::WARNING:
+            case WARNING:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.warning() << replyStr << std::flush;
                 break;
-            case BreakDownRootAnswer::ERROR:
+            case ERROR:
                 std::getline(replyStream, replyStr, DELIM);
                 logger.error() << replyStr << std::flush;
                 break;
-            case BreakDownRootAnswer::EXCEPTION:
+            case EXCEPTION:
                 std::getline(replyStream, replyStr, DELIM);
                 throw PluginException(replyStr);
             default:
@@ -404,8 +412,8 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
 {
     auto param = boost::json::parse(vpnIp_ipSetIds);
     std::string vpnIp(param.at("clientIp").as_string().c_str());
-    std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
-    std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
+    std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
+    std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
 
     answer(BreakDownRootAnswer::NOTE)
         << "Something went wrong. Enforcing removal of IP " << vpnIp << " from IP sets."
@@ -446,5 +454,39 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
                 << ex.getMessage() << " (ignoring)"
                 << flushAnswer;
         }
+    }
+}
+
+void BreakDownRootDaemon::addVpnIpToIpSets(const std::string &json)
+{
+    auto param = boost::json::parse(json);
+    std::string vpnIp(param.at("clientIp").as_string().c_str());
+    std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("incoming")));
+    std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("outgoing")));
+
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1_IpSet firewallIpSet(connection);
+    for (long id: incomingIds) {
+        firewallIpSet.addEntry(_plugin.ipSetNameSrc(id), vpnIp);
+    }
+    for (long id: outgoingIds) {
+        firewallIpSet.addEntry(_plugin.ipSetNameDst(id), vpnIp);
+    }
+}
+
+void BreakDownRootDaemon::removeVpnIpFromIpSets(const std::string &json)
+{
+    auto param = boost::json::parse(json);
+    std::string vpnIp(param.at("clientIp").as_string().c_str());
+    std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
+    std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
+
+    auto connection = sdbus::createSystemBusConnection();
+    FirewallD1_IpSet firewallIpSet(connection);
+    for (long id: incomingIds) {
+        firewallIpSet.removeEntry(_plugin.ipSetNameSrc(id), vpnIp);
+    }
+    for (long id: outgoingIds) {
+        firewallIpSet.removeEntry(_plugin.ipSetNameDst(id), vpnIp);
     }
 }

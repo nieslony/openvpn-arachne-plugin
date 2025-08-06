@@ -242,18 +242,14 @@ void ClientSession::addVpnIpToIpSets()
     for (auto id: json.at("outgoing").as_array()) {
         _outgoingIds.push_back(id.as_int64());
     }
+    json.as_object()["clientIp"] = _vpnIp;
+    std::stringstream str;
+    str << json;
 
     try {
-        auto connection = sdbus::createSystemBusConnection();
-        FirewallD1_IpSet firewallIpSet(connection);
-        for (long id: _incomingIds) {
-            firewallIpSet.addEntry(_plugin.ipSetNameSrc(id), _vpnIp);
-        }
-        for (long id: _outgoingIds) {
-            firewallIpSet.addEntry(_plugin.ipSetNameDst(id), _vpnIp);
-        }
+        _plugin.execCommand(this, BreakDownRootCommand::ADD_VPN_TO_IP_SETS, str.str());
     }
-    catch (const sdbus::Error &ex) {
+    catch (const PluginException &ex) {
         auto param = boost::json::object{
             {"clientIp", _vpnIp},
             {"outgoingIds", boost::json::array(_outgoingIds.begin(), _outgoingIds.end())},
@@ -276,27 +272,20 @@ void ClientSession::addVpnIpToIpSets()
 void ClientSession::removeVpnIpFromIpSets()
 {
     _logger.note() << "Updating " << _username << "'s firewall rules" << std::flush;
+    auto param = boost::json::object{
+        {"clientIp", _vpnIp},
+        {"outgoingIds", boost::json::array(_outgoingIds.begin(), _outgoingIds.end())},
+        {"incomingIds", boost::json::array(_incomingIds.begin(), _incomingIds.end())}
+    };
+    std::stringstream paramStr;
+    paramStr << param;
 
     try {
-        auto connection = sdbus::createSystemBusConnection();
-        FirewallD1_IpSet firewallIpSet(connection);
-        for (long id: _incomingIds) {
-            firewallIpSet.removeEntry(_plugin.ipSetNameSrc(id), _vpnIp);
-        }
-        for (long id: _outgoingIds) {
-            firewallIpSet.removeEntry(_plugin.ipSetNameDst(id), _vpnIp);
-        }
+        _plugin.execCommand(this, BreakDownRootCommand::REMOVE_VPN_FROM_IP_SETS, paramStr.str());
     }
     catch (const sdbus::Error &ex) {
-        auto param = boost::json::object{
-            {"clientIp", _vpnIp},
-            {"outgoingIds", boost::json::array(_outgoingIds.begin(), _outgoingIds.end())},
-            {"incomingIds", boost::json::array(_incomingIds.begin(), _incomingIds.end())}
-        };
-        std::stringstream str;
-        str << param;
 
-        _plugin.execCommand(this, BreakDownRootCommand::FORCE_IPSET_CLEANUP, str.str());
+        _plugin.execCommand(this, BreakDownRootCommand::FORCE_IPSET_CLEANUP, paramStr.str());
 
         throw PluginException("Cannot update incoming rich rules: ", ex.what());
     }
