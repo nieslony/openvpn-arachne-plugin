@@ -6,8 +6,8 @@
 ArachneLogBuf::ArachneLogBuf(plugin_vlog_t log_func, int sessionId, const std::string &prefix) :
     _logFunc(log_func),
     _sessionId(sessionId),
-    _prefix(prefix),
-    _level(PLOG_NOTE)
+    _level(PLOG_NOTE),
+    _prefix(prefix)
 {
 }
 
