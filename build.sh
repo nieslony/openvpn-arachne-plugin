@@ -32,15 +32,18 @@ if [ -z "$family" ]; then
 fi
 
 if [ "$family" == "rhel" ]; then
-    echo "--- Install rpmbuild ----"
-    dnf install -y rpm-build which
-
     if [ "$ID" = "almalinux" ]; then
         echo "--- Install almalinux extras ---"
         dnf install -y 'dnf-command(config-manager)'
         dnf config-manager --set-enabled crb
         dnf install -y epel-release
     fi
+
+    echo "--- Installing updates ---"
+    dnf update -y
+
+    echo "--- Install rpmbuild ----"
+    dnf install -y rpm-build which
 
     echo "--- Install Build Dependencies ---"
     dnf builddep -y /build/*spec
