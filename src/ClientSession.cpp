@@ -204,8 +204,7 @@ void ClientSession::loginUser(
 
     boost::json::value json;
     try {
-        std::istringstream iss(body);
-        iss >> json;
+        json = boost::json::parse(body);
         _apiToken = json.at("apiAuthToken").as_string().c_str();
     }
     catch (const std::exception &ex) {
@@ -378,8 +377,7 @@ void ClientSession::readJson(
     }
 
     try {
-        std::istringstream iss(body);
-        json = boost::json::parse(iss);
+        json = boost::json::parse(body);
     }
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());

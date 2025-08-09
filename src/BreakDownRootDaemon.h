@@ -5,7 +5,10 @@
 
 #include <boost/iostreams/stream.hpp>
 #include <boost/iostreams/device/file_descriptor.hpp>
+
+#ifndef HAVE_LEGACY_BOOST
 #include <boost/describe/enum.hpp>
+#endif
 
 #include <ostream>
 #include <map>
@@ -24,9 +27,13 @@ class ArachneLogger;
 
 namespace boost { namespace json { class value; }}
 
+#ifdef HAVE_LEGACY_BOOST
+enum class BreakDownRootCommand : uint8_t {
+#else
 BOOST_DEFINE_FIXED_ENUM_CLASS(
     BreakDownRootCommand,
     uint8_t,
+#endif
     PING,
     CLEANUP_POLICIES,
     APPLY_PERMANENT_RULES_TO_RUNTIME,
@@ -36,18 +43,30 @@ BOOST_DEFINE_FIXED_ENUM_CLASS(
     ADD_VPN_TO_IP_SETS,
     REMOVE_VPN_FROM_IP_SETS,
     EXIT
+#ifdef HAVE_LEGACY_BOOST
+};
+#else
 )
+#endif
 
+#ifdef HAVE_LEGACY_BOOST
+enum class BreakDownRootAnswer : uint8_t {
+#else
 BOOST_DEFINE_FIXED_ENUM_CLASS(
     BreakDownRootAnswer,
     uint8_t,
+#endif
     SUCCESS,
     DEBUG,
     NOTE,
     WARNING,
     ERROR,
     EXCEPTION
+#ifdef HAVE_LEGACY_BOOST
+};
+#else
 )
+#endif
 
 class BreakDownRootDaemon {
 public:

@@ -4,7 +4,6 @@
 
 #include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/describe/enum_to_string.hpp>
 
 #include <cstdint>
 #include <ostream>
@@ -14,6 +13,46 @@
 #include <cstdlib>
 
 const char BreakDownRootDaemon::DELIM = '\x09';
+
+#ifdef HAVE_LEGACY_BOOST
+#define CASE_STR(v) case v: return # v ;
+
+const char* enum_to_string(BreakDownRootCommand cmd, const char* defValue)
+{
+    switch (cmd) {
+        using enum BreakDownRootCommand;
+            CASE_STR(PING)
+            CASE_STR(CLEANUP_POLICIES)
+            CASE_STR(APPLY_PERMANENT_RULES_TO_RUNTIME)
+            CASE_STR(SET_ROUTING_STATUS)
+            CASE_STR(UPDATE_FIREWALL_RULES)
+            CASE_STR(FORCE_IPSET_CLEANUP)
+            CASE_STR(ADD_VPN_TO_IP_SETS)
+            CASE_STR(REMOVE_VPN_FROM_IP_SETS)
+            CASE_STR(EXIT)
+        default:
+            return defValue;
+    }
+}
+
+const char* enum_to_string(BreakDownRootAnswer ans, const char* defValue)
+{
+    switch (ans) {
+        using enum BreakDownRootAnswer;
+            CASE_STR(SUCCESS)
+            CASE_STR(DEBUG)
+            CASE_STR(NOTE)
+            CASE_STR(WARNING)
+            CASE_STR(ERROR)
+            CASE_STR(EXCEPTION)
+        default: return defValue;
+    }
+}
+#else
+#include <boost/describe/enum_to_string.hpp>
+
+using boost::describe::enum_to_string;
+#endif
 
 BreakDownRootDaemon::BreakDownRootDaemon(plugin_vlog_t logFunc, const ArachnePlugin &plugin) :
     _plugin(plugin),
@@ -39,7 +78,7 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
         std::getline(_reader, param, DELIM);
 
         BreakDownRootCommand cmd = static_cast<BreakDownRootCommand>(command);
-        _logger.debug() << "Got command: " << boost::describe::enum_to_string(cmd, "") << "(" << param << ")" << std::flush;
+        _logger.debug() << "Got command: " << enum_to_string(cmd, "") << "(" << param << ")" << std::flush;
         try {
             switch (cmd) {
                 using enum BreakDownRootCommand;
@@ -89,7 +128,7 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
                                       ArachneLogger &logger,
                                       BreakDownRootCommand command, const std::string &param)
 {
-    logger.debug() << "Sending " << boost::describe::enum_to_string(command, "") << std::flush;
+    logger.debug() << "Sending " << enum_to_string(command, "") << std::flush;
     commandStream << static_cast<uint8_t>(command)
         << param << DELIM
         << std::flush;
@@ -99,7 +138,7 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
 
         replyStream >> reply;
         BreakDownRootAnswer answer = static_cast<BreakDownRootAnswer>(reply);
-        logger.debug() << "Got reply (" << boost::describe::enum_to_string(answer, "") << "): ";
+        logger.debug() << "Got reply (" << enum_to_string(answer, "") << "): ";
         switch (answer) {
             using enum BreakDownRootAnswer;
             case SUCCESS:
@@ -219,8 +258,7 @@ void BreakDownRootDaemon::setRoutingStatus(const std::string &forward)
 
 void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
 {
-    std::stringstream str(rules);
-    auto json = boost::json::parse(str);
+    auto json = boost::json::parse(rules);
 
     std::vector<std::string> incomingRichRules;
     std::vector<std::string> outgoingRichRules;

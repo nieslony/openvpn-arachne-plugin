@@ -18,7 +18,11 @@ LT_INIT([disable-static])
 AX_CXX_COMPILE_STDCXX(20, [noext], [mandatory])
 
 AC_CHECK_HEADERS([openvpn-plugin.h openvpn/openvpn-plugin.h])
-AX_BOOST_BASE
+AX_BOOST_BASE(
+    [1.78],
+    [],
+    [AC_DEFINE(HAVE_LEGACY_BOOST)]
+)
 AX_BOOST_SYSTEM
 AX_BOOST_REGEX
 AX_BOOST_IOSTREAMS
