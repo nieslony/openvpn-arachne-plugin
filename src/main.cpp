@@ -115,3 +115,17 @@ openvpn_plugin_client_destructor_v1(
 
     delete session;
 }
+
+OPENVPN_EXPORT void
+openvpn_plugin_abort_v1(openvpn_plugin_handle_t handle)
+{
+    ArachnePlugin *plugin = reinterpret_cast<ArachnePlugin*>(handle);
+    if (plugin)
+    {
+        plugin->logger().error() << "Closing plugin due to fatal error" << std::endl;
+        delete plugin;
+    }
+    else {
+        std::cerr << "Sometging really went wrong. There's no arachne plugin to delete" << std::endl;
+    }
+}
