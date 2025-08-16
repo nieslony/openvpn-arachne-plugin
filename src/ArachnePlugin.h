@@ -57,23 +57,24 @@ public:
 
     bool enableFirewall() const { return _enableFirewall; }
 
-    const std::string &firewallZoneName() { return _firewallZoneName; }
-    const Url &firewallUrlUser() { return _firewallUrlUser; }
+    const std::string &firewallZoneName() const { return _firewallZoneName; }
+    const Url &firewallUrlUser() const { return _firewallUrlUser; }
     const std::set<std::string> &myIps() const { return _myIps; }
 
     FirewallD1_Zone &firewallZone() { return _firewallZone; }
     FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
 
-    const std::string &clientConfig() { return _clientConfig; }
+    const std::string &clientConfig() const { return _clientConfig; }
     bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
 
     const std::string &interface() const { return _interface; }
-    const std::string &firewallZoneName() const { return _firewallZoneName; }
 
     const std::string &incomingPolicyName() const { return _incomingPolicyName; }
     const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
     const std::string &toHostPolicyName() const { return _toHostPolicyName; }
     const std::string &fromHostPolicyName() const { return _fromHostPolicyName; }
+
+    ArachneLogger &logger() { return _logger; }
 
     std::string ipSetNameSrc(long id) const;
     std::string ipSetNameDst(long id) const;
