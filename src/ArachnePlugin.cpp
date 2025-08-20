@@ -17,10 +17,11 @@
 #include <sstream>
 #include <tuple>
 #include <numeric>
-#include <sys/wait.h>
 
+#include <sys/wait.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
+#include <pwd.h>
 
 const std::string ArachnePlugin::FN_IP_FORWARD = "/proc/sys/net/ipv4/ip_forward";
 
@@ -32,7 +33,10 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _firewallZone(_dbusConnection),
     _firewallPolicy(_dbusConnection)
 {
-    _logger.note() << "Initializing" << "..." << std::flush;
+    _logger.note()
+        << "Initializing as user " << getpwuid(getuid())->pw_name
+        << ", effective " << getpwuid(geteuid())->pw_name
+        << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;
 
     parseConfigFile(in_args);
@@ -66,45 +70,7 @@ void ArachnePlugin::parseConfigFile(const openvpn_plugin_args_open_in *in_args)
 
 void ArachnePlugin::startBackgroundProcess()
 {
-    int commandPipe[2];
-    if (pipe2(commandPipe, 0) == -1)
-    {
-        std::stringstream str;
-        str << "Cannot open pipe: " << strerror(errno);
-        throw PluginException(str.str());
-    }
-
-    int replyPipe[2];
-    if (pipe2(replyPipe, 0) == -1)
-    {
-        std::stringstream str;
-        str << "Cannot open pipe: " << strerror(errno);
-        throw PluginException(str.str());
-    }
-
-    _backgroundPid = fork();
-    switch (_backgroundPid) {
-        case -1: {
-            std::stringstream str;
-            str << "Cannot fork background process: " << strerror(errno);
-            throw PluginException(str.str());
-        }
-        case 0:
-            close(commandPipe[1]);
-            close(replyPipe[0]);
-            _breakDownRootDaemon.commandLoop(commandPipe[0], replyPipe[1]);
-            return;
-        default:
-            close(commandPipe[0]);
-            close(replyPipe[1]);
-            _backgroundReplyChannel.open(
-                boost::iostreams::file_descriptor_source(replyPipe[0], boost::iostreams::never_close_handle)
-            );
-            _backgroundCommandChannel.open(
-                boost::iostreams::file_descriptor_sink(commandPipe[1], boost::iostreams::never_close_handle)
-            );
-            return;
-    }
+    _breakDownRootDaemon.enterCommandLoop();
 }
 
 ArachnePlugin::~ArachnePlugin()
@@ -435,8 +401,7 @@ std::string ArachnePlugin::ipSetNameDst(long id) const
 
 void ArachnePlugin::execCommand(ClientSession* session, BreakDownRootCommand command, const std::string &param)
 {
-    BreakDownRootDaemon::execCommand(
-        _backgroundCommandChannel, _backgroundReplyChannel,
+    _breakDownRootDaemon.execCommand(
         session != NULL ? session->logger() : _logger,
         command, param
     );

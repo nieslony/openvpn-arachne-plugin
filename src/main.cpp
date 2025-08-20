@@ -126,6 +126,6 @@ openvpn_plugin_abort_v1(openvpn_plugin_handle_t handle)
         delete plugin;
     }
     else {
-        std::cerr << "Sometging really went wrong. There's no arachne plugin to delete" << std::endl;
+        std::cerr << "Something really went wrong. There's no arachne plugin to delete." << std::endl;
     }
 }

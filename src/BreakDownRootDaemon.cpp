@@ -2,15 +2,17 @@
 #include "ArachnePlugin.h"
 #include "ClientSession.h"
 
+#include <boost/asio/impl/read.hpp>
+#include <boost/asio/impl/read_until.hpp>
 #include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/asio/buffer.hpp>
 
-#include <cstdint>
 #include <ostream>
 #include <fstream>
 #include <tuple>
-#include <cstdio>
-#include <cstdlib>
+
+#include <sys/prctl.h>
 
 const char BreakDownRootDaemon::DELIM = '\x09';
 
@@ -54,28 +56,69 @@ const char* enum_to_string(BreakDownRootAnswer ans, const char* defValue)
 using boost::describe::enum_to_string;
 #endif
 
-BreakDownRootDaemon::BreakDownRootDaemon(plugin_vlog_t logFunc, const ArachnePlugin &plugin) :
+using boost::asio::local::stream_protocol;
+
+BreakDownRootDaemon::BreakDownRootDaemon(plugin_vlog_t logFunc, ArachnePlugin &plugin) :
     _plugin(plugin),
-    _logger(logFunc, "BreakDownRootCommands")
+    _logger(logFunc, "BreakDownRootCommands"),
+    _parentSocket(_io_service),
+    _childSocket(_io_service)
 {}
 
-void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
+void BreakDownRootDaemon::enterCommandLoop()
 {
-    _logger.note() << "Starting event loop as user " << getpid() << std::flush;
+    _logger.note() << "Starting event loop" << std::flush;
 
-    _reader.open(
-        boost::iostreams::file_descriptor_source(fdRead, boost::iostreams::never_close_handle)
-    );
-    _writer.open(
-        boost::iostreams::file_descriptor_sink(fdWrite, boost::iostreams::never_close_handle)
-    );
+    boost::asio::local::connect_pair(_childSocket, _parentSocket);
 
-    while (_reader) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::stringstream msg;
+        msg << "Cannot fork process: " << strerror(errno);
+        throw PluginException(msg.str());
+    }
+    if (pid == 0) { // child process
+        _parentSocket.close();
+    } else { // parent process
+        _childSocket.close();
+        execCommand(_plugin.logger(), BreakDownRootCommand::PING);
+        return;
+    }
+
+    ignoreSignals();
+    if (daemon(0, 9) < 0)
+    {
+        std::stringstream msg;
+        msg << "Cannot daemonize proicess: " << strerror(errno);
+        throw PluginException(msg.str());
+    }
+/*
+    if (setsid() < 0)
+    {
+        std::stringstream msg;
+        msg << "Cannot create a session and process group: " << strerror(errno);
+        throw PluginException(msg.str());
+    }*/
+
+    while (_childSocket.is_open()) {
         uint8_t command;
         std::string param;
 
-        _reader >> command;
-        std::getline(_reader, param, DELIM);
+        try {
+            boost::asio::read(_childSocket, boost::asio::buffer(&command, sizeof(command)));
+
+            size_t len;
+            boost::asio::read(_childSocket, boost::asio::buffer(&len, sizeof(len)));
+            param.resize(len);
+            boost::asio::read(_childSocket, boost::asio::buffer(param, len));
+        }
+        catch (boost::system::system_error &ex) {
+            if (ex.code() == boost::asio::error::eof)
+            {
+                _logger.note() << "Reached EOF while reading commands, exiting." << std::flush;
+                return;
+            }
+        }
 
         BreakDownRootCommand cmd = static_cast<BreakDownRootCommand>(command);
         _logger.debug() << "Got command: " << enum_to_string(cmd, "") << "(" << param << ")" << std::flush;
@@ -108,8 +151,8 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
                     break;
                 case EXIT:
                     _logger.note() << "Exiting event loop" << std::flush;
-                    exit(EXIT_SUCCESS);
-                    break;
+                    sendAnswer(BreakDownRootAnswer::SUCCESS);
+                    return;
                 default:
                     _logger.warning() << "Invalid command: " << command << std::flush;
                     sendAnswer(BreakDownRootAnswer::WARNING, "Invalid command");
@@ -124,20 +167,36 @@ void BreakDownRootDaemon::commandLoop(int fdRead, int fdWrite)
     _logger.warning() << "Event loop unexped left" << std::flush;
 }
 
-void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream &replyStream,
-                                      ArachneLogger &logger,
-                                      BreakDownRootCommand command, const std::string &param)
+void BreakDownRootDaemon::ignoreSignals()
+{
+    signal(SIGTERM, SIG_DFL);
+
+    signal(SIGINT, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGUSR2, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+}
+
+void BreakDownRootDaemon::execCommand(ArachneLogger &logger, BreakDownRootCommand command, const std::string &param)
 {
     logger.debug() << "Sending " << enum_to_string(command, "") << std::flush;
-    commandStream << static_cast<uint8_t>(command)
-        << param << DELIM
-        << std::flush;
-    while (true) {
-        uint8_t reply;
-        std::string replyStr;
 
-        replyStream >> reply;
-        BreakDownRootAnswer answer = static_cast<BreakDownRootAnswer>(reply);
+    boost::asio::write(_parentSocket, boost::asio::buffer(&command, sizeof(command)));
+    size_t len = param.length();
+    boost::asio::write(_parentSocket, boost::asio::buffer(&len, sizeof(len)));
+    boost::asio::write(_parentSocket, boost::asio::buffer(param, param.length()));
+
+    while (true) {
+        BreakDownRootAnswer answer;
+        boost::asio::read(_parentSocket, boost::asio::buffer(&answer, sizeof(answer)));
+
+        size_t len;
+        boost::asio::read(_parentSocket, boost::asio::buffer(&len, sizeof(len)));
+        std::string answerParam;
+        answerParam.resize(len);
+        boost::asio::read(_parentSocket, boost::asio::buffer(answerParam, len));
+
         logger.debug() << "Got reply (" << enum_to_string(answer, "") << "): ";
         switch (answer) {
             using enum BreakDownRootAnswer;
@@ -145,24 +204,19 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
                 logger.debug() << "Success" << std::flush;
                 return;
             case DEBUG:
-                std::getline(replyStream, replyStr, DELIM);
-                logger.debug() << replyStr << std::flush;
+                logger.debug() << answerParam << std::flush;
                 break;
             case NOTE:
-                std::getline(replyStream, replyStr, DELIM);
-                logger.note() << replyStr << std::flush;
+                logger.note() << answerParam << std::flush;
                 break;
             case WARNING:
-                std::getline(replyStream, replyStr, DELIM);
-                logger.warning() << replyStr << std::flush;
+                logger.warning() << answerParam << std::flush;
                 break;
             case ERROR:
-                std::getline(replyStream, replyStr, DELIM);
-                logger.error() << replyStr << std::flush;
+                logger.error() << answerParam << std::flush;
                 break;
             case EXCEPTION:
-                std::getline(replyStream, replyStr, DELIM);
-                throw PluginException(replyStr);
+                throw PluginException(answerParam);
             default:
                 throw PluginException("Invalid command");
         }
@@ -170,32 +224,22 @@ void BreakDownRootDaemon::execCommand(std::ostream &commandStream, std::istream 
     throw PluginException("Command stream died");
 }
 
-void BreakDownRootDaemon::sendAnswer(BreakDownRootAnswer answer)
-{
-    _writer
-        << static_cast<uint8_t>(answer)
-        << std::flush;
-}
 void BreakDownRootDaemon::sendAnswer(BreakDownRootAnswer answer, const std::string &msg)
 {
-    _writer
-        << static_cast<uint8_t>(answer)
-        << msg << DELIM
-        << std::flush;
-}
+    boost::asio::write(_childSocket, boost::asio::buffer(&answer, sizeof(answer)));
 
-std::ostream &BreakDownRootDaemon::answer(BreakDownRootAnswer answer)
-{
-    _writer
-        << static_cast<uint8_t>(answer);
-
-    return _writer;
+    size_t len = msg.length();
+    boost::asio::write(_childSocket, boost::asio::buffer(&len, sizeof(len)));
+    boost::asio::write(_childSocket, boost::asio::buffer(msg, len));
 }
 
 void BreakDownRootDaemon::cleanupPolicies()
 {
     if (_plugin.enableFirewall()) {
-        answer(BreakDownRootAnswer::NOTE) << "Cleaning up firewall policies for zone '" << _plugin.firewallZoneName() << "'" << flushAnswer;
+        sendAnswer(
+            BreakDownRootAnswer::NOTE,
+            "Cleaning up firewall policies for zone '" + _plugin.firewallZoneName() + "'"
+        );
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1 firewall(connection);
         FirewallD1_Config firewallConfig(connection);
@@ -208,9 +252,9 @@ void BreakDownRootDaemon::cleanupPolicies()
 
         for (std::string policyName: firewallConfig.getPolicyNames()) {
             if (policyName.starts_with(_plugin.firewallZoneName())) {
-                answer(BreakDownRootAnswer::NOTE)
-                    << "  Removing all rich rules from policy '" << policyName << "'"
-                    << flushAnswer;
+                sendAnswer(BreakDownRootAnswer::NOTE,
+                    "  Removing all rich rules from policy '" + policyName + "'"
+                );
                 std::vector<std::string> emptyList;
                 std::map<std::string, sdbus::Variant> settings;
                 settings["rich_rules"] = sdbus::Variant(emptyList);
@@ -220,15 +264,24 @@ void BreakDownRootDaemon::cleanupPolicies()
                 firewalldConfigPolicy.update(settings);
             }
             else {
-                answer(BreakDownRootAnswer::DEBUG) << "  Ignoring policy '" << policyName << "'" << flushAnswer;
+                sendAnswer(
+                    BreakDownRootAnswer::DEBUG,
+                    "  Ignoring policy '" + policyName + "'"
+                );
             }
         }
 
         auto ipSetNames = firewallConfig.getIPSetNames();
-        answer(BreakDownRootAnswer::NOTE) << "  Removing " << ipSetNames.size() << " IP sets" << flushAnswer;
+        sendAnswer(
+            BreakDownRootAnswer::NOTE,
+            "  Removing " + std::to_string(ipSetNames.size()) + " IP sets"
+        );
         for (std::string ipSetName: ipSetNames) {
             if (ipSetName.starts_with(_plugin.firewallZoneName())) {
-                answer(BreakDownRootAnswer::DEBUG) << "  Removing IP set " << ipSetName << flushAnswer;
+                sendAnswer(
+                    BreakDownRootAnswer::DEBUG,
+                    "  Removing IP set " + ipSetName
+                );
                 auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
                 FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
                 firewalldConfigIpSet.remove();
@@ -239,7 +292,10 @@ void BreakDownRootDaemon::cleanupPolicies()
 
 void BreakDownRootDaemon::applyPermentRulesToRuntime()
 {
-    answer(BreakDownRootAnswer::NOTE) << "Reloading permanent firewall settings" << flushAnswer;
+    sendAnswer(
+        BreakDownRootAnswer::NOTE,
+        "Reloading permanent firewall settings"
+    );
     auto connection = sdbus::createSystemBusConnection();
     FirewallD1 firewall(connection);
     firewall.reload();
@@ -284,10 +340,16 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
         std::map<std::string, std::string>, // options
         std::vector<std::string> // entries
         > settings{ "1", name, "", "hash:ip", {}, entries};
-        answer(BreakDownRootAnswer::DEBUG) << "  Adding IPSet " << name << flushAnswer;
+        sendAnswer(
+            BreakDownRootAnswer::DEBUG,
+            "  Adding IPSet " + name
+        );
         firewallConfig.addIPSet(name, settings);
     }
-    answer(BreakDownRootAnswer::NOTE) << "  " << ipSets.size() << " IP sets added." << flushAnswer;
+    sendAnswer(
+        BreakDownRootAnswer::NOTE,
+        "  " + std::to_string(ipSets.size()) + " IP sets added."
+    );
 
     std::list<std::tuple<const std::string&, std::vector<std::string>& > > t {
         { _plugin.incomingPolicyName(), incomingRichRules },
@@ -304,26 +366,30 @@ void BreakDownRootDaemon::updateFirewallRules(const std::string &rules)
         configPolicy.update(settings);
     }
 
+    std::stringstream msg;
     _logger.debug()
         << "Added incoming rules: " << incomingRules
         << std::flush;
-    answer(BreakDownRootAnswer::NOTE)
-        << "  "
+    msg << "  "
         << incomingRules.as_array().size() << " incoming rules: "
         << incomingRichRules.size() << " incoming rich rules, "
         << toHostRichRules.size() << " rich rules to localhost"
-        << " added"
-        << flushAnswer;
+        << " added";
+    sendAnswer(BreakDownRootAnswer::NOTE, msg.str());
+
+    msg.clear();
     _logger.debug()
         << "Added outgoing rules: " << outgoingRules
         << std::flush;
-    answer(BreakDownRootAnswer::NOTE)
+
+
+    msg
         << "  "
         << outgoingRules.as_array().size() << " outgoing rules: "
         << outgoingRichRules.size() << " outgoing rich rules, "
         << fromHostRichRules.size() << " rich rules from localhost"
-        << " added"
-        << flushAnswer;
+        << " added";
+    sendAnswer(BreakDownRootAnswer::NOTE, msg.str());
 }
 
 void BreakDownRootDaemon::createRichRules(
@@ -335,7 +401,10 @@ void BreakDownRootDaemon::createRichRules(
 )
 {
     if (icmpRules == "ALLOW_ALL") {
-        answer(BreakDownRootAnswer::DEBUG) << "  Allow ping from everywhere to everywhere" << flushAnswer;
+        sendAnswer(
+            BreakDownRootAnswer::DEBUG,
+            "  Allow ping from everywhere to everywhere"
+        );
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
 
@@ -415,7 +484,10 @@ void BreakDownRootDaemon::createRichRules(
             if (dstList != NULL)
                 richRule << "destination ipset=\"" << ipSetDstName << "\" ";
             richRule << what << " accept";
-            answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule " << richRule.str() << flushAnswer;
+            sendAnswer(
+                BreakDownRootAnswer::DEBUG,
+                "  Created rich rule " + richRule.str()
+            );
             richRules.push_back(richRule.str());
         }
 
@@ -426,7 +498,10 @@ void BreakDownRootDaemon::createRichRules(
                 if (srcList != NULL)
                     richRule << "source ipset=\"" << ipSetSrcName << "\" ";
                 richRule << what << " accept";
-                answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule (local dest) " << richRule.str() << flushAnswer;
+                sendAnswer(
+                    BreakDownRootAnswer::DEBUG,
+                    "  Created rich rule (local dest) " + richRule.str()
+                );
                 localRichRules.push_back(richRule.str());
             }
         }
@@ -438,7 +513,10 @@ void BreakDownRootDaemon::createRichRules(
                 if (dstList != NULL)
                     richRule << "destination ipset=\"" << ipSetDstName << "\" ";
                 richRule << what << " accept";
-                answer(BreakDownRootAnswer::DEBUG) << "  Created rich rule (local src) " << richRule.str() << flushAnswer;
+                sendAnswer(
+                    BreakDownRootAnswer::DEBUG,
+                    "  Created rich rule (local src) " + richRule.str()
+                );
                 localRichRules.push_back(richRule.str());
             }
         }
@@ -453,9 +531,10 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
     std::vector<long> incomingIds(boost::json::value_to<std::vector<long>>(param.at("incomingIds")));
     std::vector<long> outgoingIds(boost::json::value_to<std::vector<long>>(param.at("outgoingIds")));
 
-    answer(BreakDownRootAnswer::NOTE)
-        << "Something went wrong. Enforcing removal of IP " << vpnIp << " from IP sets."
-        << flushAnswer;
+    sendAnswer(
+        BreakDownRootAnswer::NOTE,
+        "Something went wrong. Enforcing removal of IP " + vpnIp + " from IP sets."
+        );
     std::unique_ptr<sdbus::IConnection> connection;
     try {
         connection = sdbus::createSystemBusConnection();
@@ -472,15 +551,16 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
         std::string ipSetName = _plugin.ipSetNameSrc(id);
         try {
             firewallIpSet.addEntry(ipSetName, vpnIp);
-            answer(BreakDownRootAnswer::WARNING)
-                << "  " << vpnIp << " removed from IP set " << ipSetName
-                << flushAnswer;
+            sendAnswer(
+                BreakDownRootAnswer::WARNING,
+                "  " + vpnIp + " removed from IP set " + ipSetName
+                );
         }
         catch (const sdbus::Error &ex) {
-            answer(BreakDownRootAnswer::WARNING)
-                << "  Cannot remove " << vpnIp << " from IP set " << ipSetName << ": "
-                << ex.getMessage() << " (ignoring)"
-                << flushAnswer;
+            sendAnswer(
+                BreakDownRootAnswer::WARNING,
+                "  Cannot remove " + vpnIp + " from IP set " + ipSetName + ": " + ex.getMessage() + " (ignoring)"
+            );
         }
     }
     for (long id: outgoingIds) {
@@ -488,9 +568,10 @@ void BreakDownRootDaemon::forceIpSetCleanup(const std::string &vpnIp_ipSetIds)
             firewallIpSet.addEntry(_plugin.ipSetNameDst(id), vpnIp);
         }
         catch (const sdbus::Error &ex) {
-            answer(BreakDownRootAnswer::WARNING)
-                << ex.getMessage() << " (ignoring)"
-                << flushAnswer;
+            sendAnswer(
+                BreakDownRootAnswer::WARNING,
+                ex.getMessage() + " (ignoring)"
+            );
         }
     }
 }

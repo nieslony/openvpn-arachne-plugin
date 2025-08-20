@@ -3,8 +3,7 @@
 
 #include "ArachneLogger.h"
 
-#include <boost/iostreams/stream.hpp>
-#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/asio.hpp>
 
 #ifndef HAVE_LEGACY_BOOST
 #include <boost/describe/enum.hpp>
@@ -24,8 +23,18 @@
 class ClientSession;
 class ArachnePlugin;
 class ArachneLogger;
-
-namespace boost { namespace json { class value; }}
+namespace boost {
+    namespace asio {
+        namespace local {
+            class stream_protocol;
+        }
+    }
+}
+namespace boost {
+    namespace json {
+        class value;
+    }
+}
 
 #ifdef HAVE_LEGACY_BOOST
 enum class BreakDownRootCommand : uint8_t {
@@ -71,24 +80,22 @@ BOOST_DEFINE_FIXED_ENUM_CLASS(
 class BreakDownRootDaemon {
 public:
 
-    BreakDownRootDaemon(plugin_vlog_t logFunc, const ArachnePlugin&);
-    void commandLoop(int readFd, int writeFd);
-    static void execCommand(std::ostream &commandStream, std::istream &replyStream,
-                            ArachneLogger&,
-                            BreakDownRootCommand, const std::string& param = "");
+    BreakDownRootDaemon(plugin_vlog_t logFunc, ArachnePlugin&);
+    void enterCommandLoop();
+
+    void execCommand(ArachneLogger &logger, BreakDownRootCommand, const std::string& param = "");
 
 private:
     static const char DELIM;
 
-    const ArachnePlugin &_plugin;
+    ArachnePlugin &_plugin;
     ArachneLogger _logger;
-    boost::iostreams::stream<boost::iostreams::file_descriptor_source> _reader;
-    boost::iostreams::stream<boost::iostreams::file_descriptor_sink> _writer;
 
-    void sendAnswer(BreakDownRootAnswer);
-    std::ostream &answer(BreakDownRootAnswer);
-    void sendAnswer(BreakDownRootAnswer, const std::string &msg);
-    static std::ostream &flushAnswer(std::ostream &str) { return str << DELIM << std::flush; }
+    boost::asio::io_service _io_service;
+    boost::asio::local::stream_protocol::socket _parentSocket;
+    boost::asio::local::stream_protocol::socket _childSocket;
+
+    void sendAnswer(BreakDownRootAnswer, const std::string &msg = "");
 
     void createRichRules(
         const boost::json::value &json,
@@ -105,6 +112,8 @@ private:
     void forceIpSetCleanup(const std::string &vpnIp_ipSetIds);
     void addVpnIpToIpSets(const std::string&);
     void removeVpnIpFromIpSets(const std::string&);
+
+    void ignoreSignals();
 };
 
 #endif
