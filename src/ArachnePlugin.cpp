@@ -28,10 +28,7 @@ const std::string ArachnePlugin::FN_IP_FORWARD = "/proc/sys/net/ipv4/ip_forward"
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger(in_args->callbacks->plugin_vlog),
     _breakDownRootDaemon(in_args->callbacks->plugin_vlog, *this),
-    _lastSession(0),
-    _dbusConnection(sdbus::createSystemBusConnection()),
-    _firewallZone(_dbusConnection),
-    _firewallPolicy(_dbusConnection)
+    _lastSession(0)
 {
     _logger.note()
         << "Initializing as user " << getpwuid(getuid())->pw_name

@@ -42,6 +42,7 @@ public:
     ~ArachnePlugin();
 
     ClientSession *createClientSession();
+    ArachneLogger &logger() { return _logger; }
 
     void setRouting(ClientSession*);
     void restoreRouting(ClientSession*);
@@ -61,10 +62,8 @@ public:
     const Url &firewallUrlUser() const { return _firewallUrlUser; }
     const std::set<std::string> &myIps() const { return _myIps; }
 
-    FirewallD1_Zone &firewallZone() { return _firewallZone; }
-    FirewallD1_Policy &firewallPolicy() { return _firewallPolicy; }
+    const std::string &clientConfig() { return _clientConfig; }
 
-    const std::string &clientConfig() const { return _clientConfig; }
     bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
 
     const std::string &interface() const { return _interface; }
@@ -73,8 +72,6 @@ public:
     const std::string &outgongPolicyName() const { return _outgoingPolicyName; }
     const std::string &toHostPolicyName() const { return _toHostPolicyName; }
     const std::string &fromHostPolicyName() const { return _fromHostPolicyName; }
-
-    ArachneLogger &logger() { return _logger; }
 
     std::string ipSetNameSrc(long id) const;
     std::string ipSetNameDst(long id) const;
@@ -87,10 +84,6 @@ private:
     plugin_vlog_t _logFunc;
     int _lastSession;
     Config _config;
-
-    std::unique_ptr<sdbus::IConnection> _dbusConnection;
-    FirewallD1_Zone _firewallZone;
-    FirewallD1_Policy _firewallPolicy;
 
     Url _loginUrl;
     Url _authUrl;

@@ -33,7 +33,7 @@ openvpn_plugin_open_v3 (
     catch (const std::exception &ex) {
         va_list a;
         va_end(a);
-        arguments->callbacks->plugin_vlog(PLOG_ERR, "Arachne", ex.what(), a);
+        arguments->callbacks->plugin_vlog(PLOG_ERR, "Arachne: Caught exception: ", ex.what(), a);
 
         return OPENVPN_PLUGIN_FUNC_ERROR;
     }
@@ -56,7 +56,6 @@ OPENVPN_EXPORT void
 openvpn_plugin_close_v1(openvpn_plugin_handle_t handle)
 {
     ArachnePlugin *context = reinterpret_cast<ArachnePlugin*>(handle);
-
     delete context;
 }
 
@@ -111,7 +110,9 @@ openvpn_plugin_client_destructor_v1(
     openvpn_plugin_handle_t handle,
     void *per_client_context
 ) {
+    ArachnePlugin *plugin = reinterpret_cast<ArachnePlugin*>(handle);
     ClientSession *session = reinterpret_cast<ClientSession*>(per_client_context);
+    session->logger().note() << "Deleting session " << std::flush;
 
     delete session;
 }
