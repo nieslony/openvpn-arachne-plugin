@@ -73,7 +73,12 @@ void ArachnePlugin::startBackgroundProcess()
 ArachnePlugin::~ArachnePlugin()
 {
     _logger.note() << "Terminating background process" << std::flush;
-    execCommand(NULL, BreakDownRootCommand::EXIT);
+    try {
+        execCommand(NULL, BreakDownRootCommand::EXIT);
+    }
+    catch (std::exception &ex) {
+        _logger.warning() << "Error sending EXIT command: " << ex.what() << std::flush;
+    }
     waitpid(_backgroundPid, NULL, 0);
 }
 
