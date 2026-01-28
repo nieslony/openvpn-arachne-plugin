@@ -16,6 +16,7 @@
 #include <sstream>
 #include <tuple>
 #include <numeric>
+#include <filesystem>
 
 #include <ifaddrs.h>
 #include <arpa/inet.h>
@@ -474,6 +475,13 @@ void ArachnePlugin::createRichRules(
 
 void ArachnePlugin::loadFirewallRules(ClientSession *session)
 {
+    if (!std::filesystem::exists(_firewallRulesPath)) {
+        session->logger().warning()
+            << "Cannot read file with firewall rules. File " << _firewallRulesPath
+            << " doesn't exist. Don't load any rules. All traffic will be blocked."
+            << std::flush;
+            return;
+    }
     session->logger().note() << "Loading firewall rules" << std::flush;
     try {
         std::ifstream ifs;
