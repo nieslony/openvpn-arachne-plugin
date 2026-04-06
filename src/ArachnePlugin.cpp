@@ -37,7 +37,6 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
 
     readConfigFile(configFile);
     _loginUrl = _config.get("url-login", "");
-    _authUrl = _config.get("url-auth", "");
     _enableRouting = _config.get("enable-routing");
     _enableFirewall = _config.getBool("enable-firewall", false);
     if (_enableFirewall) {
@@ -99,7 +98,6 @@ void ArachnePlugin::userAuthPassword(const char *envp[], ClientSession* session)
     const std::string password(getEnv("password", envp));
 
     session->loginUser(_loginUrl, username, password);
-    session->authUser(_authUrl);
 }
 
 void ArachnePlugin::readConfigFile(const char*filename)

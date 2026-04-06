@@ -189,6 +189,7 @@ void ClientSession::loginUser(
     const std::string &password
 ) {
     _username = username;
+    _logger.note() << "Try to authenticate user " << username << std::flush;
     std::string body;
     try
     {
@@ -210,16 +211,6 @@ void ClientSession::loginUser(
     }
 
     return;
-}
-
-void ClientSession::authUser(const Url &url)
-{
-    try {
-        doHttp(url, makeBearerAuth());
-    }
-    catch (HttpException &ex) {
-        throw PluginException("Authentication failed", ex.what());
-    }
 }
 
 void ClientSession::addVpnIpToIpSets()
@@ -427,7 +418,18 @@ std::string ClientSession::doHttp(
 ) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
-    auto const results = resolver.resolve(url.host(), std::to_string(url.port()));
+    tcp::resolver::results_type results;
+    try {
+        results = resolver.resolve(url.host(), std::to_string(url.port()));
+    }
+    catch (boost::system::system_error &ex) {
+        std::stringstream str;
+        str
+            << "Cannot resolve " << url.host() << ":" << url.port()
+            << ": " << ex.what();
+        throw PluginException(str.str());
+    }
+
     beast::flat_buffer buffer;
 
     http::request<http::string_body> req{http::verb::get, url.path(), 11};
@@ -436,7 +438,12 @@ std::string ClientSession::doHttp(
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
     http::response<http::string_body> res;
 
+    _logger.note() << "GET " << url.str() << std::flush;
     if (url.protocol() == "https") {
+        _logger.note()
+            << "Connecting to " << url.host() << ":" << url.port()
+            << " with https"
+            << std::flush;
         ssl::context ctx(ssl::context::tlsv12_client);
         ctx.set_default_verify_paths();
         ctx.set_verify_mode(ssl::verify_peer);
@@ -457,6 +464,11 @@ std::string ClientSession::doHttp(
     }
     else
     {
+        _logger.note()
+            << "Connecting to " << url.host() << ":" << url.port()
+            << " with http"
+            << std::flush;
+
         beast::tcp_stream stream(ioc);
         stream.connect(results);
 

@@ -56,7 +56,7 @@ public:
     const std::set<std::string> &myIps() { return _myIps; }
 
     const std::string &clientConfig() { return _clientConfig; }
-    bool userPasswdAuthEnabled() const { return !_authUrl.empty(); }
+    bool userPasswdAuthEnabled() const { return !_loginUrl.empty(); }
 
     const std::string &interface() const { return _interface; }
 
@@ -73,7 +73,6 @@ private:
     Config _config;
 
     Url _loginUrl;
-    Url _authUrl;
     Url _firewallUrlUser;
     std::set<std::string> _myIps;
     std::string _savedIpForward;
