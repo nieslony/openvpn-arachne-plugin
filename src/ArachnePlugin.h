@@ -66,6 +66,9 @@ public:
     std::string ipSetNameSrc(long id) const;
     std::string ipSetNameDst(long id) const;
 
+    std::string encodeBase64(const std::string in);
+    std::string decodeBase64(const std::string in);
+
 private:
     ArachneLogger _logger;
     plugin_vlog_t _logFunc;
@@ -87,6 +90,9 @@ private:
     std::string _outgoingPolicyName;
     std::string _toHostPolicyName;
     std::string _fromHostPolicyName;
+
+    plugin_base64_decode_t _base64Decoder;
+    plugin_base64_encode_t _base64Encoder;
 
     const char* getEnv(const char* key, const char *envp[]);
     std::ostream&  dumpEnv(std::ostream &os, const char *envp[]);

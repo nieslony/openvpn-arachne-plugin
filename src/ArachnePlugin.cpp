@@ -9,6 +9,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <cerrno>
+#include <cstddef>
 #include <fstream>
 #include <openvpn-plugin.h>
 #include <sdbus-c++/IProxy.h>
@@ -25,7 +26,9 @@ static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
 ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     _logger(in_args->callbacks->plugin_vlog),
-    _lastSession(0)
+    _lastSession(0),
+    _base64Decoder(in_args->callbacks->plugin_base64_decode),
+    _base64Encoder(in_args->callbacks->plugin_base64_encode)
 {
     _logger.note() << "Initializing" << "..." << std::flush;
     _logFunc = in_args->callbacks->plugin_vlog;
@@ -621,4 +624,30 @@ std::string ArachnePlugin::ipSetNameDst(long id) const
     std::stringstream name;
     name <<_firewallZoneName << "-" << id << "-dst";
     return name.str();
+}
+
+std::string ArachnePlugin::encodeBase64(const std::string in)
+{
+    char *buffer;
+    int len = _base64Encoder(in.c_str(), in.size(), &buffer);
+    if (len < 0) {
+        throw PluginException("Cannot encode base64");
+    }
+    std::string ret(buffer);
+    delete[] buffer;
+    return ret;
+}
+
+std::string ArachnePlugin::decodeBase64(const std::string in)
+{
+    const int bufLen = in.length() * 2;
+    char *buffer = new char[bufLen];
+    int len = _base64Decoder(in.c_str(), buffer, bufLen);
+    if (len < 0) {
+        delete[] buffer;
+        throw PluginException("Error decoding base64");
+    }
+    std::string ret(buffer, len);
+    delete[] buffer;
+    return ret;
 }

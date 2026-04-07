@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Http.h"
 
+#include <boost/algorithm/string/classification.hpp>
 #include <boost/asio.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -17,8 +18,10 @@
 #include <boost/asio/ssl/error.hpp>
 #include <boost/asio/ssl/stream.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/http/message.hpp>
+#include <boost/beast/http/string_body.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/foreach.hpp>
@@ -30,6 +33,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <iostream>
 
 #include <net/route.h>
 #include <sys/socket.h>
@@ -156,26 +160,10 @@ void ClientSession::verifyClientIp()
     return;
 }
 
-std::string makeBasicAuth(const std::string &username, const std::string &password)
+std::string ClientSession::makeBasicAuth(const std::string &username, const std::string &password)
 {
-    using namespace boost::archive::iterators;
     std::string authStr = username + ":" + password;
-    std::stringstream os;
-    using IT =
-        base64_from_binary<    // convert binary values to base64 characters
-            transform_width<   // retrieve 6 bit integers from a sequence of 8 bit bytes
-                std::string::const_iterator,
-                6,
-                8
-            >
-        >; // compose all the above operations in to a new iterator
-    std::copy(
-        IT(std::begin(authStr)),
-        IT(std::end(authStr)),
-        std::ostream_iterator<char>(os)
-    );
-    os << std::string("====").substr(0, (4 - os.str().length() % 4) % 4);
-    return "Basic " + os.str();
+    return "Basic " + _plugin.encodeBase64(authStr);
 }
 
 std::string ClientSession::makeBearerAuth()
@@ -190,10 +178,29 @@ void ClientSession::loginUser(
 ) {
     _username = username;
     _logger.note() << "Try to authenticate user " << username << std::flush;
+
+    std::string auth;
+    std::string jsonStr;
+
+    // sent OTP
+    if (password.starts_with("SCRV1")) {
+        _logger.note() << "Try authentication with OTP" << std::flush;
+        std::vector<std::string> tokens;
+        boost::split(tokens, password, boost::is_any_of(":"));
+
+        const std::string decPassword = _plugin.decodeBase64(tokens[1]);
+        const std::string otp = _plugin.decodeBase64(tokens[2]);
+
+        auth = makeBasicAuth(username, decPassword);
+        jsonStr = "{ \"otp\": \"" + otp + "\" }\n";
+    } else  {
+        auth = makeBasicAuth(username, password);
+    }
+
     std::string body;
     try
     {
-        body = doHttp(url, makeBasicAuth(username, password));
+        body = doHttp(url, auth, jsonStr);
     }
     catch (HttpException &ex)
     {
@@ -414,7 +421,8 @@ void ClientSession::readJson(
 
 std::string ClientSession::doHttp(
     const Url &url,
-    const std::string &authentication
+    const std::string &authentication,
+    const std::string &body
 ) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
@@ -436,6 +444,11 @@ std::string ClientSession::doHttp(
     req.set(http::field::host, url.host());
     req.set(http::field::authorization, authentication);
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    if (!body.empty()) {
+        req.set(http::field::content_type, "application/json");
+        req.set(http::field::content_length, std::to_string(body.size()));
+        req.body() = body;
+    }
     http::response<http::string_body> res;
 
     _logger.note() << "GET " << url.str() << std::flush;

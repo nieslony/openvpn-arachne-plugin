@@ -99,7 +99,8 @@ private:
 
     std::string doHttp(
         const Url &url,
-        const std::string &authentication
+        const std::string &authentication,
+        const std::string &body = ""
     );
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
@@ -110,7 +111,10 @@ private:
     void readJson(const Url &url, boost::property_tree::ptree &json);
     void addRoute(int fd, const std::string &address, const std::string &mask);
     void removeRoute(int fd, const std::string &address, const std::string &mask);
+
     std::string makeBearerAuth();
+    std::string makeBasicAuth(const std::string &username, const std::string &password);
+
     void forceIpCleanup();
 };
 
