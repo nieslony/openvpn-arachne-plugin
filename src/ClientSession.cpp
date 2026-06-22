@@ -12,9 +12,12 @@
 #include <boost/archive/iterators/transform_width.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/connect.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/ssl/error.hpp>
+#include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/asio/ssl/stream.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -106,9 +109,10 @@ void ClientSession::verifyClientIp()
     if (_verifyIpDns)
     {
         boost::asio::ip::address_v4 ip =
-            boost::asio::ip::address_v4::from_string(vpnIp());
-        boost::asio::io_service io_service;
-        boost::asio::ip::tcp::resolver resolver(io_service);
+        boost::asio::ip::make_address_v4(vpnIp());
+
+        boost::asio::io_context io_context;
+        boost::asio::ip::tcp::resolver resolver(io_context);
         boost::asio::ip::tcp::resolver::results_type endpoints =
             resolver.resolve(_commonName, "");
         for (auto &it : endpoints)
@@ -448,8 +452,9 @@ std::string ClientSession::doHttp(
         ctx.set_default_verify_paths();
         ctx.set_verify_mode(ssl::verify_peer);
         ctx.set_verify_callback(
-            boost::asio::ssl::rfc2818_verification(url.host())
+            boost::asio::ssl::host_name_verification(url.host())
         );
+
         beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
         if(! SSL_set_tlsext_host_name(stream.native_handle(), url.host().c_str()))
         {
