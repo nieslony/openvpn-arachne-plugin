@@ -12,6 +12,9 @@ fi
 if netstat -tln | grep 3128 -q ; then
     my_ip="$( host $HOSTNAME | awk '{ print $NF; }' | head -1 )"
     HTTP_PROXY=http://$my_ip:3128
+    echo "Enable local proxy $HTTP_PROXY"
+else
+    echo "No local proxy found"
 fi
 
 
