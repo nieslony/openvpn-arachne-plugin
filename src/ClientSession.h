@@ -100,7 +100,8 @@ private:
     std::string doHttp(
         const Url &url,
         const std::string &authentication,
-        const std::string &body = ""
+        const std::string &otp,
+        const std::string &body
     );
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,

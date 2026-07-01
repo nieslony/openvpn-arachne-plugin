@@ -184,7 +184,7 @@ void ClientSession::loginUser(
     _logger.note() << "Try to authenticate user " << username << std::flush;
 
     std::string auth;
-    std::string jsonStr;
+    std::string otp;
 
     // sent OTP
     if (password.starts_with("SCRV1")) {
@@ -193,10 +193,9 @@ void ClientSession::loginUser(
         boost::split(tokens, password, boost::is_any_of(":"));
 
         const std::string decPassword = _plugin.decodeBase64(tokens[1]);
-        const std::string otp = _plugin.decodeBase64(tokens[2]);
+        otp = _plugin.decodeBase64(tokens[2]);
 
         auth = makeBasicAuth(username, decPassword);
-        jsonStr = "{ \"otp\": \"" + otp + "\" }\n";
     } else  {
         auth = makeBasicAuth(username, password);
     }
@@ -204,7 +203,7 @@ void ClientSession::loginUser(
     std::string body;
     try
     {
-        body = doHttp(url, auth, jsonStr);
+        body = doHttp(url, auth, otp, "");
     }
     catch (HttpException &ex)
     {
@@ -405,7 +404,7 @@ void ClientSession::readJson(
     std::string body;
 
     try {
-        body = doHttp(url, makeBearerAuth());
+        body = doHttp(url, makeBearerAuth(), "", "");
     }
     catch (HttpException &ex) {
         std::stringstream msg;
@@ -426,6 +425,7 @@ void ClientSession::readJson(
 std::string ClientSession::doHttp(
     const Url &url,
     const std::string &authentication,
+    const std::string &otp,
     const std::string &body
 ) {
     net::io_context ioc;
@@ -448,6 +448,8 @@ std::string ClientSession::doHttp(
     req.set(http::field::host, url.host());
     req.set(http::field::authorization, authentication);
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    if (!otp.empty())
+        req.set("X-OTP", otp);
     if (!body.empty()) {
         req.set(http::field::content_type, "application/json");
         req.set(http::field::content_length, std::to_string(body.size()));
