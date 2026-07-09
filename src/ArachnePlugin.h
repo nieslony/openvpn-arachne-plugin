@@ -76,6 +76,7 @@ private:
     Config _config;
 
     Url _loginUrl;
+    Url _vpnAuthUrl;
     Url _firewallUrlUser;
     std::set<std::string> _myIps;
     std::string _savedIpForward;

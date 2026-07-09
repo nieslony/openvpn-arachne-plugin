@@ -176,7 +176,8 @@ std::string ClientSession::makeBearerAuth()
 }
 
 void ClientSession::loginUser(
-    const Url &url,
+    const Url &loginUrl,
+    const Url &vpnAuthUrl,
     const std::string &username,
     const std::string &password
 ) {
@@ -203,7 +204,7 @@ void ClientSession::loginUser(
     std::string body;
     try
     {
-        body = doHttp(url, auth, otp, "");
+        body = doHttp(loginUrl, auth, otp);
     }
     catch (HttpException &ex)
     {
@@ -215,6 +216,13 @@ void ClientSession::loginUser(
         std::istringstream iss(body);
         boost::property_tree::read_json(iss, json);
         _apiToken = json.get<std::string>("apiAuthToken");
+    }
+    catch (const std::exception &ex) {
+        throw PluginException("Cannot parse json", ex.what());
+    }
+
+    try {
+        doHttp(vpnAuthUrl, makeBearerAuth());
     }
     catch (const std::exception &ex) {
         throw PluginException("Cannot parse json", ex.what());
@@ -404,7 +412,7 @@ void ClientSession::readJson(
     std::string body;
 
     try {
-        body = doHttp(url, makeBearerAuth(), "", "");
+        body = doHttp(url, makeBearerAuth());
     }
     catch (HttpException &ex) {
         std::stringstream msg;
@@ -425,9 +433,7 @@ void ClientSession::readJson(
 std::string ClientSession::doHttp(
     const Url &url,
     const std::string &authentication,
-    const std::string &otp,
-    const std::string &body
-) {
+    const std::string &otp) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
     tcp::resolver::results_type results;
@@ -450,11 +456,6 @@ std::string ClientSession::doHttp(
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
     if (!otp.empty())
         req.set("X-OTP", otp);
-    if (!body.empty()) {
-        req.set(http::field::content_type, "application/json");
-        req.set(http::field::content_length, std::to_string(body.size()));
-        req.body() = body;
-    }
     http::response<http::string_body> res;
 
     _logger.note() << "GET " << url.str() << std::flush;

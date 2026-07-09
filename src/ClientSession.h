@@ -67,7 +67,8 @@ public:
     const std::string &remoteIp() const { return _remoteIp; }
 
     void loginUser(
-        const Url &url,
+        const Url &loginUrl,
+        const Url &vpnAuthUrl,
         const std::string &username,
         const std::string &password
     );
@@ -100,8 +101,7 @@ private:
     std::string doHttp(
         const Url &url,
         const std::string &authentication,
-        const std::string &otp,
-        const std::string &body
+        const std::string &otp = ""
     );
     void insertRichRules(
         const boost::property_tree::ptree::value_type &node,
