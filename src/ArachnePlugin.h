@@ -41,9 +41,9 @@ public:
     ClientSession *createClientSession();
     ArachneLogger &logger() { return _logger; }
 
-    void setRouting(ClientSession*);
-    void restoreRouting(ClientSession*);
-    void createFirewallZone(ClientSession*);
+    void setRouting();
+    void restoreRouting();
+    void createFirewallZone();
 
     void userAuthPassword(const char *envp[], ClientSession*);
     void pluginUp(const char *argv[], const char *envp[], ClientSession*);
@@ -100,19 +100,22 @@ private:
 
     std::string getRoutingStatus();
     void setRoutingStatus(const std::string&);
-    void cleanupPolicies(ClientSession *session);
-    void loadFirewallRules(ClientSession *session);
-    void applyPermentRulesToRuntime(ClientSession *session);
+    void cleanupPolicies();
+    void loadFirewallRules();
+    void applyPermentRulesToRuntime();
+    void startFirewallConfigWatcher();
 
     void createRichRules(
         const boost::property_tree::ptree &ptree,
         const std::string icmpRules,
         std::vector<std::string> &richRules,
         std::vector<std::string> &localRichRules,
-        std::map<std::string, std::vector<std::string>> &ipSets,
-        ClientSession *session
+        std::map<std::string, std::vector<std::string>> &ipSets
     );
     void getLocalIpAddresses(ClientSession *session);
+
+    static void firewallConfigWatcher(ArachnePlugin &plugin);
+    std::thread fileWatcherThread;
 };
 
 #endif
