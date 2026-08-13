@@ -3,13 +3,6 @@ AM_INIT_AUTOMAKE([-Wall -Werror foreign tar-pax])
 
 AC_CONFIG_MACRO_DIRS([m4])
 
-AC_ARG_VAR([PLUGINDIR], [Path of plug-in directory @<:@default=LIBDIR/openvpn/plugins@:>@])
-if test -n "${PLUGINDIR}"; then
-        plugindir="${PLUGINDIR}"
-else
-        plugindir="\${libdir}/openvpn/plugins"
-fi
-
 AC_PROG_CXX
 AM_PROG_AR
 AM_PROG_LD
@@ -36,6 +29,15 @@ PKG_CHECK_MODULES(SDBUSCPP, [sdbus-c++ >= 2.0],
     [AM_CONDITIONAL([SDBUS_CPP_2],[false])]
 )
 
+AC_ARG_WITH([plugindir],
+    [AS_HELP_STRING(
+        [--with-plugindir=DIR],
+        [Install plugin here]
+    )],
+    [plugindir="$withval"],
+    [plugindir="\${libdir}/openvpn/plugins"]
+)
+
 AC_SUBST([plugindir])
 
 AC_CONFIG_FILES([
@@ -43,4 +45,5 @@ AC_CONFIG_FILES([
     openvpn-plugin-arachne.spec
     src/Makefile
 ])
+
 AC_OUTPUT
