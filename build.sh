@@ -93,7 +93,7 @@ if [ "$family" == "rhel" ]; then
     if [ -z "$TAR_FILE" ]; then
         pushd /build-tar
         log "Tar file does not exist, running 'make dist'"
-        dnf install -y automake libtool autoconf-archive autoconf-latest
+        dnf install -y automake libtool autoconf-archive
         ./gen-auto.sh
         ./configure
         make dist
