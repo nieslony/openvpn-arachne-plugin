@@ -3,29 +3,27 @@
 #include "Config.h"
 #include "FirewallD1.h"
 
-#include <boost/asio.hpp>
+#include <arpa/inet.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/property_tree/ptree.hpp>
+#include <boost/asio.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <cerrno>
 #include <cstddef>
-#include <fstream>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <ifaddrs.h>
+#include <iostream>
+#include <numeric>
 #include <openvpn-plugin.h>
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <sstream>
-#include <vector>
-#include <iostream>
-#include <tuple>
-#include <numeric>
-#include <filesystem>
-
-#include <ifaddrs.h>
-#include <arpa/inet.h>
-
 #include <sys/inotify.h>
+#include <tuple>
+#include <vector>
 
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
@@ -711,29 +709,48 @@ void ArachnePlugin::firewallConfigWatcher(ArachnePlugin &plugin)
     }
 
     std::vector<char> buffer(4096);
+    pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    int nfds = 1;
+    int rc;
+
     while (true) {
-        size_t length = read(fd, buffer.data(), buffer.size());
-        size_t i = 0;
-        while (i < length) {
-            inotify_event *event =
-                reinterpret_cast<inotify_event*>(buffer.data() + i);
-            std::string fullName = dir + "/" + event->name;
-
-            plugin.logger().note()
-                << "File " << event->name << " created"
+        if (poll(&pfd, 1, -1) < 0) {
+            std::stringstream msg;
+            msg
+                << "Cannot poll directory watcher: "
+                << strerror(errno)
                 << std::flush;
-            size_t eventLen = sizeof(inotify_event) + event->len;
-            i += eventLen;
+            throw PluginException(msg.str());
+        }
+        plugin.logger().debug()
+            << "Got poll event"
+            << std::flush;
+        if (pfd.revents & POLLIN) {
+            size_t length = read(fd, buffer.data(), buffer.size());
+            size_t i = 0;
+            while (i < length) {
+                inotify_event *event =
+                    reinterpret_cast<inotify_event*>(buffer.data() + i);
+                std::string fullName = dir + "/" + event->name;
 
-            if (fullName == plugin._firewallRulesPath) {
-                plugin.cleanupPolicies();
-                plugin.loadFirewallRules();
-                plugin.applyPermentRulesToRuntime();
-            }
-            else {
-                plugin.logger().note()
-                    << "Ignoring " << event->name
+                plugin.logger().debug()
+                    << "File " << event->name << " created"
                     << std::flush;
+                size_t eventLen = sizeof(inotify_event) + event->len;
+                i += eventLen;
+
+                if (fullName == plugin._firewallRulesPath) {
+                    plugin.cleanupPolicies();
+                    plugin.loadFirewallRules();
+                    plugin.applyPermentRulesToRuntime();
+                }
+                else {
+                    plugin.logger().debug()
+                        << "Ignoring " << event->name
+                        << std::flush;
+                }
             }
         }
     }
