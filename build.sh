@@ -3,7 +3,7 @@
 . /etc/os-release
 PLATFORM="${PLATFORM_ID/platform:/}"
 if [ -z "$PLATFORM" ]; then
-    PLATFORM="$ID"
+    PLATFORM="$ID:$VERSION_ID"
 fi
 RPM_DIR="/build/repos/$PLATFORM"
 
