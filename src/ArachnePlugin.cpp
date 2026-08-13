@@ -713,7 +713,7 @@ void ArachnePlugin::firewallConfigWatcher(ArachnePlugin &plugin)
     std::vector<char> buffer(4096);
     while (true) {
         size_t length = read(fd, buffer.data(), buffer.size());
-        int i = 0;
+        size_t i = 0;
         while (i < length) {
             inotify_event *event =
                 reinterpret_cast<inotify_event*>(buffer.data() + i);
