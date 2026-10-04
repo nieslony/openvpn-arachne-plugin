@@ -9,6 +9,8 @@
 #include <boost/asio.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/optional/optional.hpp>
+#include <boost/foreach.hpp>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
@@ -24,6 +26,8 @@
 #include <sys/inotify.h>
 #include <tuple>
 #include <vector>
+
+using namespace boost::property_tree;
 
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
@@ -48,6 +52,7 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     if (_enableFirewall) {
         _firewallZoneName = _config.get("firewall-zone");
         _firewallRulesPath = _config.get("firewall-rules");
+        _firewallUpdatesPath = _config.get("firewall-updates");
         _firewallUrlUser = _config.get("url-firewall-user", "");
 
         _incomingPolicyName = _firewallZoneName + "-in";
@@ -490,6 +495,69 @@ void ArachnePlugin::createRichRules(
     }
 }
 
+void ArachnePlugin::updateFirewallRules()
+{
+    try {
+        logger().note() << "Loading..." << std::flush;
+        std::ifstream ifs;
+        ifs.open (_firewallUpdatesPath, std::ifstream::in);
+        ptree pt;
+        read_json(ifs, pt);
+        ifs.close();
+
+        logger().note() << "Loaded." << std::flush;
+        std::stringstream str;
+        write_json(str, pt);
+        logger().note()
+            << "Updating firewall rules from "
+            << str.str()
+            << std::flush;
+
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_IpSet firewallIpSet(connection);
+
+        for (const std::string& direction: {"incoming", "outgoing"}) {
+            logger().note()
+                << "  Updating incoming IP sets"
+                << std::flush;
+            auto incoming = pt.get_child_optional(direction);
+            if (incoming.has_value()) {
+                for (auto &[_, rule] : incoming.get()) {
+                    int id = rule.get<int>("id");
+                    logger().note()
+                        << "  Updating incoming IP set "
+                        << id << ": ";
+                    auto destination = rule.get_child_optional("destination");
+                    if (destination.has_value()) {
+                        std::vector<std::string> ips;
+                        for (auto &[_, ip] : destination.get()) {
+                            std::string ipStr = ip.get_value<std::string>();
+                            ips.push_back(ipStr);
+                            logger().note()
+                              << " " << ipStr;
+                        }
+                        logger().note() << std::flush;
+                        firewallIpSet.setEntries(ipSetNameDst(id), ips);
+                    }
+                    auto source = rule.get_child_optional("source");
+                    if (source.has_value()) {
+                        std::vector<std::string> ips;
+                        for (auto &[_, ip] : source.get()) {
+                            ips.push_back(ip.get_value<std::string>());
+                        }
+                        firewallIpSet.setEntries(ipSetNameSrc(id), ips);
+                    }
+                }
+            }
+        }
+    }
+    catch (std::exception &ex) {
+        std::stringstream str;
+        str << "Error reading " << _firewallRulesPath << ": " << ex.what();
+        throw PluginException(str.str());
+    }
+}
+
 void ArachnePlugin::loadFirewallRules()
 {
     if (!std::filesystem::exists(_firewallRulesPath)) {
@@ -699,7 +767,7 @@ void ArachnePlugin::firewallConfigWatcher(ArachnePlugin &plugin)
     int fd = inotify_init();
     if (fd < 0)
         throw PluginException("Cannot initialize inotifier");
-    int wd = inotify_add_watch(fd, dir.c_str(), IN_CREATE);
+    int wd = inotify_add_watch(fd, dir.c_str(), IN_CLOSE_WRITE);
     if (wd < 0) {
         std::stringstream msg;
         msg
@@ -745,6 +813,9 @@ void ArachnePlugin::firewallConfigWatcher(ArachnePlugin &plugin)
                     plugin.cleanupPolicies();
                     plugin.loadFirewallRules();
                     plugin.applyPermentRulesToRuntime();
+                }
+                else if (fullName == plugin._firewallUpdatesPath) {
+                    plugin.updateFirewallRules();
                 }
                 else {
                     plugin.logger().debug()

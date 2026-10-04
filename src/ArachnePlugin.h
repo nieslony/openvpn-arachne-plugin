@@ -83,6 +83,7 @@ private:
     bool _enableFirewall;
     std::string _firewallZoneName;
     std::string _firewallRulesPath;
+    std::string _firewallUpdatesPath;
     std::string _clientConfig;
     std::string _interface;
 
@@ -102,6 +103,7 @@ private:
     void setRoutingStatus(const std::string&);
     void cleanupPolicies();
     void loadFirewallRules();
+    void updateFirewallRules();
     void applyPermentRulesToRuntime();
     void startFirewallConfigWatcher();
 
