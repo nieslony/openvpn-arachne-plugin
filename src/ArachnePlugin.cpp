@@ -498,17 +498,16 @@ void ArachnePlugin::createRichRules(
 void ArachnePlugin::updateFirewallRules()
 {
     try {
-        logger().note() << "Loading..." << std::flush;
+        logger().note() << "Updating IP sets" << std::flush;
         std::ifstream ifs;
         ifs.open (_firewallUpdatesPath, std::ifstream::in);
         ptree pt;
         read_json(ifs, pt);
         ifs.close();
 
-        logger().note() << "Loaded." << std::flush;
         std::stringstream str;
         write_json(str, pt);
-        logger().note()
+        logger().debug()
             << "Updating firewall rules from "
             << str.str()
             << std::flush;
@@ -518,33 +517,39 @@ void ArachnePlugin::updateFirewallRules()
 
         for (const std::string& direction: {"incoming", "outgoing"}) {
             logger().note()
-                << "  Updating incoming IP sets"
+                << "  Updating " << direction << " IP sets"
                 << std::flush;
-            auto incoming = pt.get_child_optional(direction);
-            if (incoming.has_value()) {
-                for (auto &[_, rule] : incoming.get()) {
+            auto rules = pt.get_child_optional(direction);
+            if (rules.has_value()) {
+                for (auto &[_, rule] : rules.get()) {
                     int id = rule.get<int>("id");
                     logger().note()
-                        << "  Updating incoming IP set "
-                        << id << ": ";
+                        << "    Updating " << direction << " IP set " << id
+                        << std::flush;
+
                     auto destination = rule.get_child_optional("destination");
                     if (destination.has_value()) {
+                        logger().note() << "      Destination:";
                         std::vector<std::string> ips;
                         for (auto &[_, ip] : destination.get()) {
                             std::string ipStr = ip.get_value<std::string>();
                             ips.push_back(ipStr);
-                            logger().note()
-                              << " " << ipStr;
+                            logger().note() << " " << ipStr;
                         }
                         logger().note() << std::flush;
                         firewallIpSet.setEntries(ipSetNameDst(id), ips);
                     }
+
                     auto source = rule.get_child_optional("source");
                     if (source.has_value()) {
+                        logger().note() << "      Source:";
                         std::vector<std::string> ips;
                         for (auto &[_, ip] : source.get()) {
+                            std::string ipStr = ip.get_value<std::string>();
                             ips.push_back(ip.get_value<std::string>());
+                            logger().note() << " " << ipStr;
                         }
+                        logger().note() << std::flush;
                         firewallIpSet.setEntries(ipSetNameSrc(id), ips);
                     }
                 }
