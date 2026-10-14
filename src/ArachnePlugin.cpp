@@ -555,6 +555,16 @@ void ArachnePlugin::updateFirewallRules()
                 }
             }
         }
+
+        logger().note() << "Removing " << _firewallUpdatesPath << std::flush;
+        std::error_code err;
+        std::filesystem::remove(_firewallUpdatesPath, err);
+        if (err.value()) {
+            logger().warning()
+            << "Cannot remove " << _firewallUpdatesPath << ": "
+            << err.message()
+            << std::flush;
+        }
     }
     catch (std::exception &ex) {
         std::stringstream str;
@@ -647,6 +657,15 @@ void ArachnePlugin::loadFirewallRules()
             << fromHostRichRules.size() << " rich rules from localhost"
             << " added"
             << std::flush;
+        logger().note() << "Removing " << _firewallRulesPath << std::flush;
+        std::error_code err;
+        std::filesystem::remove(_firewallRulesPath, err);
+        if (err.value()) {
+            logger().warning()
+            << "Cannot remove " << _firewallRulesPath << ": "
+            << err.message()
+            << std::flush;
+        }
 
     }
     catch (std::exception &ex) {
