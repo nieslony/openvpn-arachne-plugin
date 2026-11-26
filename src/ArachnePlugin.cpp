@@ -3,24 +3,31 @@
 #include "Config.h"
 #include "FirewallD1.h"
 
-#include <boost/asio.hpp>
+#include <arpa/inet.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/property_tree/ptree.hpp>
+#include <boost/asio.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/optional/optional.hpp>
+#include <boost/foreach.hpp>
 #include <cerrno>
 #include <cstddef>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <ifaddrs.h>
+#include <iostream>
+#include <numeric>
 #include <openvpn-plugin.h>
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <sstream>
+#include <sys/inotify.h>
 #include <tuple>
-#include <numeric>
-#include <filesystem>
+#include <vector>
 
-#include <ifaddrs.h>
-#include <arpa/inet.h>
+using namespace boost::property_tree;
 
 static const std::string FN_IP_FORWATD = "/proc/sys/net/ipv4/ip_forward";
 
@@ -45,12 +52,15 @@ ArachnePlugin::ArachnePlugin(const openvpn_plugin_args_open_in *in_args) :
     if (_enableFirewall) {
         _firewallZoneName = _config.get("firewall-zone");
         _firewallRulesPath = _config.get("firewall-rules");
+        _firewallUpdatesPath = _config.get("firewall-updates");
         _firewallUrlUser = _config.get("url-firewall-user", "");
 
         _incomingPolicyName = _firewallZoneName + "-in";
         _outgoingPolicyName = _firewallZoneName + "-out";
         _toHostPolicyName = _firewallZoneName + "-to";
         _fromHostPolicyName = _firewallZoneName + "-from";
+
+        startFirewallConfigWatcher();
     }
     _clientConfig = _config.get("client-config", "");
 }
@@ -139,41 +149,41 @@ void ArachnePlugin::setRoutingStatus(const std::string& forward)
     ofs.close();
 }
 
-void ArachnePlugin::setRouting(ClientSession *session)
+void ArachnePlugin::setRouting()
 {
     if (_enableRouting == "RESTORE_ON_EXIT") {
         _savedIpForward = getRoutingStatus();
         if (_savedIpForward == "0") {
-            session->logger().note() << "Enabling IP forwarding" << std::flush;
+            logger().note() << "Enabling IP forwarding" << std::flush;
             setRoutingStatus("1");
         } else {
-            session->logger().note() << "IP forwarding already enabled" << std::flush;
+            logger().note() << "IP forwarding already enabled" << std::flush;
         }
     } else if (_enableRouting == "ENABLE") {
-        session->logger().note() << "Enabling IP forwarding" << std::flush;
+        logger().note() << "Enabling IP forwarding" << std::flush;
         setRoutingStatus("1");
     } else if (_enableRouting == "OFF") {
-        session->logger().note() << "Don't enable IP forwarding" << std::flush;
+        logger().note() << "Don't enable IP forwarding" << std::flush;
     } else {
         throw PluginException("Invalid value of enable-routing: " + _enableRouting);
     }
 }
 
-void ArachnePlugin::restoreRouting(ClientSession *session)
+void ArachnePlugin::restoreRouting()
 {
     if (_savedIpForward != "1" && _savedIpForward != "") {
-        session->logger().note()
+        logger().note()
             << "Restoring IP forwading to " << _savedIpForward
             << std::flush;
         setRoutingStatus(_savedIpForward);
     } else {
-        session->logger().note() << "Leaving routing untouched" << std::flush;
+        logger().note() << "Leaving routing untouched" << std::flush;
     }
 }
 
-void ArachnePlugin::createFirewallZone(ClientSession *session)
+void ArachnePlugin::createFirewallZone()
 {
-    session->logger().note() << "Preparing firewall zone " <<_firewallZoneName << std::flush;
+    logger().note() << "Preparing firewall zone " <<_firewallZoneName << std::flush;
     auto connection = sdbus::createSystemBusConnection();
     FirewallD1 firewall(connection);
     FirewallD1_Config firewallConfig(connection);
@@ -185,12 +195,12 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
             [this](std::string s){ return s == _firewallZoneName; }
         )
         ) {
-            session->logger().note()
+            logger().note()
                 << "  Firewall Zone '" << _firewallZoneName << "' already exists"
                 << std::flush;
         }
         else {
-            session->logger().note()
+            logger().note()
                 << "Creating firewall zone '" << _firewallZoneName << "'"
                 << std::flush;
             std::map<std::string, sdbus::Variant> settings;
@@ -211,12 +221,12 @@ void ArachnePlugin::createFirewallZone(ClientSession *session)
                 [pname](std::string s){ return s == pname; }
             )
             ) {
-                session->logger().note()
+                logger().note()
                     << "  Firewall Policy '" << pname << "' already exists"
                     << std::flush;
             }
             else {
-                session->logger().note()
+                logger().note()
                     << "  Creating firewall policy '" << pname << "'"
                     << std::flush;
                 std::map<std::string, sdbus::Variant> settings;
@@ -247,30 +257,29 @@ void ArachnePlugin::pluginUp(const char *argv[], const char *envp[], ClientSessi
 {
     dumpEnv(_logger.debug(), envp) << std::flush;
     _interface = getEnv("dev", envp);
-    session->logger().note() << "Bringing plugin up..." << std::flush;
+    logger().note() << "Bringing plugin up..." << std::flush;
     getLocalIpAddresses(session);
 
-    setRouting(session);
+    setRouting();
 
     if (_enableFirewall) {
-        createFirewallZone(session);
-        cleanupPolicies(session);
-        loadFirewallRules(session);
-        applyPermentRulesToRuntime(session);
+        createFirewallZone();
+        cleanupPolicies();
+        applyPermentRulesToRuntime();
     }
     else
-        session->logger().note() << "Firewall is disabled" << std::flush;
+        logger().note() << "Firewall is disabled" << std::flush;
 
-    session->logger().note() << "Plugin is up." << std::flush;
+    logger().note() << "Plugin is up." << std::flush;
 }
 
 void ArachnePlugin::pluginDown(const char *argv[], const char *envp[], ClientSession* session)
 {
-    session->logger() << "Bringing plugin down..." << std::flush;
-    cleanupPolicies(session);
-    applyPermentRulesToRuntime(session);
-    restoreRouting(session);
-    session->logger() << "Plugin is down" << std::flush;
+    logger() << "Bringing plugin down..." << std::flush;
+    cleanupPolicies();
+    applyPermentRulesToRuntime();
+    restoreRouting();
+    logger() << "Plugin is down" << std::flush;
 }
 
 void ArachnePlugin::clientConnect(
@@ -314,10 +323,12 @@ void ArachnePlugin::clientDisconnect(
     session->removeRoutesToRemoteNetworks();
 }
 
-void ArachnePlugin::cleanupPolicies(ClientSession*session)
+void ArachnePlugin::cleanupPolicies()
 {
     if (_enableFirewall) {
-        session->logger().note() << "Cleaning up firewall policies for zone '" <<_firewallZoneName << "'" << std::flush;
+        logger().note()
+            << "Cleaning up firewall policies for zone '" <<_firewallZoneName << "'"
+            << std::flush;
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1 firewall(connection);
         FirewallD1_Config firewallConfig(connection);
@@ -330,7 +341,7 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
 
         for (std::string policyName: firewallConfig.getPolicyNames()) {
             if (policyName.starts_with(_firewallZoneName)) {
-                session->logger().note()
+                logger().note()
                     << "  Removing all rich rules from policy '" << policyName << "'"
                     << std::flush;
                 std::vector<std::string> emptyList;
@@ -342,15 +353,21 @@ void ArachnePlugin::cleanupPolicies(ClientSession*session)
                 firewalldConfigPolicy.update(settings);
             }
             else {
-                session->logger().debug() << "  Ignoring policy '" << policyName << "'" << std::flush;
+                logger().debug()
+                    << "  Ignoring policy '" << policyName << "'"
+                    << std::flush;
             }
         }
 
         auto ipSetNames = firewallConfig.getIPSetNames();
-        session->logger().note() << "  Removing " << ipSetNames.size() << " IP sets" << std::flush;
+        logger().note()
+            << "  Removing " << ipSetNames.size() << " IP sets"
+            << std::flush;
         for (std::string ipSetName: ipSetNames) {
             if (ipSetName.starts_with(_firewallZoneName)) {
-                session->logger().debug() << "  Removing IP set " << ipSetName << std::flush;
+                logger().debug()
+                    << "  Removing IP set " << ipSetName
+                    << std::flush;
                 auto ipSetPath = firewallConfig.getIPSetByName(ipSetName);
                 FirewallD1_Config_IpSet firewalldConfigIpSet(connection, ipSetPath);
                 firewalldConfigIpSet.remove();
@@ -364,12 +381,13 @@ void ArachnePlugin::createRichRules(
     const std::string icmpRules,
     std::vector<std::string> &richRules,
     std::vector<std::string> &localRichRules,
-    std::map<std::string, std::vector<std::string>> &ipSets,
-    ClientSession *session
+    std::map<std::string, std::vector<std::string>> &ipSets
 )
 {
     if (icmpRules == "ALLOW_ALL") {
-        session->logger().debug() << "  Allow ping from everywhere to everywhere" << std::flush;
+        logger().debug()
+            << "  Allow ping from everywhere to everywhere"
+            << std::flush;
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-request\" accept");
         richRules.push_back("rule family=\"ipv4\" icmp-type name=\"echo-reply\" accept");
 
@@ -441,7 +459,9 @@ void ArachnePlugin::createRichRules(
             if (dstList.has_value())
                 richRule << "destination ipset=\"" << ipSetDstName << "\" ";
             richRule << what << " accept";
-            session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+            logger().debug()
+                << "  Created rich rule " << richRule.str()
+                << std::flush;
             richRules.push_back(richRule.str());
         }
 
@@ -452,7 +472,9 @@ void ArachnePlugin::createRichRules(
                 if (srcList.has_value())
                     richRule << "source ipset=\"" << ipSetSrcName << "\" ";
                 richRule << what << " accept";
-                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+                    logger().debug()
+                        << "  Created rich rule " << richRule.str()
+                        << std::flush;
                 localRichRules.push_back(richRule.str());
             }
         }
@@ -464,23 +486,93 @@ void ArachnePlugin::createRichRules(
                 if (dstList.has_value())
                     richRule << "destination ipset=\"" << ipSetDstName << "\" ";
                 richRule << what << " accept";
-                session->logger().debug() << "  Created rich rule " << richRule.str() << std::flush;
+                logger().debug()
+                    << "  Created rich rule " << richRule.str()
+                    << std::flush;
                 localRichRules.push_back(richRule.str());
             }
         }
     }
 }
 
-void ArachnePlugin::loadFirewallRules(ClientSession *session)
+void ArachnePlugin::updateFirewallRules()
+{
+    try {
+        logger().note() << "Updating IP sets" << std::flush;
+        std::ifstream ifs;
+        ifs.open (_firewallUpdatesPath, std::ifstream::in);
+        ptree pt;
+        read_json(ifs, pt);
+        ifs.close();
+
+        std::stringstream str;
+        write_json(str, pt);
+        logger().debug()
+            << "Updating firewall rules from "
+            << str.str()
+            << std::flush;
+
+        auto connection = sdbus::createSystemBusConnection();
+        FirewallD1_IpSet firewallIpSet(connection);
+
+        for (const std::string& direction: {"incoming", "outgoing"}) {
+            logger().note()
+                << "  Updating " << direction << " IP sets"
+                << std::flush;
+            auto rules = pt.get_child_optional(direction);
+            if (rules.has_value()) {
+                for (auto &[_, rule] : rules.get()) {
+                    int id = rule.get<int>("id");
+                    logger().note()
+                        << "    Updating " << direction << " IP set " << id
+                        << std::flush;
+
+                    auto destination = rule.get_child_optional("destination");
+                    if (destination.has_value()) {
+                        logger().note() << "      Destination:";
+                        std::vector<std::string> ips;
+                        for (auto &[_, ip] : destination.get()) {
+                            std::string ipStr = ip.get_value<std::string>();
+                            ips.push_back(ipStr);
+                            logger().note() << " " << ipStr;
+                        }
+                        logger().note() << std::flush;
+                        firewallIpSet.setEntries(ipSetNameDst(id), ips);
+                    }
+
+                    auto source = rule.get_child_optional("source");
+                    if (source.has_value()) {
+                        logger().note() << "      Source:";
+                        std::vector<std::string> ips;
+                        for (auto &[_, ip] : source.get()) {
+                            std::string ipStr = ip.get_value<std::string>();
+                            ips.push_back(ip.get_value<std::string>());
+                            logger().note() << " " << ipStr;
+                        }
+                        logger().note() << std::flush;
+                        firewallIpSet.setEntries(ipSetNameSrc(id), ips);
+                    }
+                }
+            }
+        }
+    }
+    catch (std::exception &ex) {
+        std::stringstream str;
+        str << "Error reading " << _firewallRulesPath << ": " << ex.what();
+        throw PluginException(str.str());
+    }
+}
+
+void ArachnePlugin::loadFirewallRules()
 {
     if (!std::filesystem::exists(_firewallRulesPath)) {
-        session->logger().warning()
+        logger().warning()
             << "Cannot read file with firewall rules. File " << _firewallRulesPath
             << " doesn't exist. Don't load any rules. All traffic will be blocked."
             << std::flush;
             return;
     }
-    session->logger().note() << "Loading firewall rules" << std::flush;
+    logger().note() << "Loading firewall rules" << std::flush;
     try {
         std::ifstream ifs;
         ifs.open (_firewallRulesPath, std::ifstream::in);
@@ -496,8 +588,14 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
         auto incomingRules = pt.get_child("incoming");
         auto outgoingRules = pt.get_child("outgoing");
         auto icmpRules = pt.get<std::string>("icmp-rules");
-        createRichRules(incomingRules, icmpRules, incomingRichRules, toHostRichRules, ipSets, session);
-        createRichRules(outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules, ipSets, session);
+        createRichRules(
+            incomingRules, icmpRules, incomingRichRules, toHostRichRules,
+            ipSets
+        );
+        createRichRules(
+            outgoingRules, icmpRules, outgoingRichRules, fromHostRichRules,
+            ipSets
+        );
 
         auto connection = sdbus::createSystemBusConnection();
         FirewallD1_Config firewallConfig(connection);
@@ -511,10 +609,14 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
                 std::map<std::string, std::string>, // options
                 std::vector<std::string> // entries
             > settings{ "1", name, "", "hash:ip", {}, entries};
-            session->logger().debug() << "  Adding IPSet " << name << std::flush;
+            logger().debug()
+                << "  Adding IPSet " << name
+                << std::flush;
             firewallConfig.addIPSet(name, settings);
         }
-        session->logger().note() << "  " << ipSets.size() << " IP sets added." << std::flush;
+        logger().note()
+            << "  " << ipSets.size() << " IP sets added."
+            << std::flush;
 
         std::list<std::tuple<std::string&, std::vector<std::string>& > > t {
             { _incomingPolicyName, incomingRichRules },
@@ -531,14 +633,14 @@ void ArachnePlugin::loadFirewallRules(ClientSession *session)
             configPolicy.update(settings);
         }
 
-        session->logger().note()
+        logger().note()
             << "  "
             << incomingRules.size() << " incoming rules: "
             << incomingRichRules.size() << " incoming rich rules, "
             << toHostRichRules.size() << " rich rules to localhost"
             << " added"
             << std::flush;
-        session->logger().note()
+        logger().note()
             << "  "
             << outgoingRules.size() << " outgoing rules: "
             << outgoingRichRules.size() << " outgoing rich rules, "
@@ -604,9 +706,11 @@ void ArachnePlugin::getLocalIpAddresses(ClientSession*session)
         << std::flush;
 }
 
-void ArachnePlugin::applyPermentRulesToRuntime(ClientSession *session)
+void ArachnePlugin::applyPermentRulesToRuntime()
 {
-    session->logger().note() << "Reloading permanent firewall settings" << std::flush;
+    logger().note()
+        << "Reloading permanent firewall settings"
+        << std::flush;
     auto connection = sdbus::createSystemBusConnection();
     FirewallD1 firewall(connection);
     firewall.reload();
@@ -650,4 +754,88 @@ std::string ArachnePlugin::decodeBase64(const std::string in)
     std::string ret(buffer, len);
     delete[] buffer;
     return ret;
+}
+
+void ArachnePlugin::startFirewallConfigWatcher()
+{
+    fileWatcherThread = std::thread(firewallConfigWatcher, std::ref(*this));
+}
+
+void ArachnePlugin::firewallConfigWatcher(ArachnePlugin &plugin)
+{
+    std::string dir = std::filesystem::path(plugin._firewallRulesPath)
+        .parent_path();
+    plugin.logger().note()
+        << "Starting directory watcher for " << dir
+        << std::flush;
+
+    int fd = inotify_init();
+    if (fd < 0)
+        throw PluginException("Cannot initialize inotifier");
+    int wd = inotify_add_watch(fd, dir.c_str(), IN_CLOSE_WRITE);
+    if (wd < 0) {
+        std::stringstream msg;
+        msg
+            << "Cannot create watcher for directory " << dir
+            << ": " << strerror(errno);
+        throw PluginException(msg.str());
+    }
+
+    std::vector<char> buffer(4096);
+    pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    int nfds = 1;
+    int rc;
+
+    while (true) {
+        if (poll(&pfd, 1, -1) < 0) {
+            std::stringstream msg;
+            msg
+                << "Cannot poll directory watcher: "
+                << strerror(errno)
+                << std::flush;
+            throw PluginException(msg.str());
+        }
+        plugin.logger().debug()
+            << "Got poll event"
+            << std::flush;
+        if (pfd.revents & POLLIN) {
+            size_t length = read(fd, buffer.data(), buffer.size());
+            size_t i = 0;
+            while (i < length) {
+                inotify_event *event =
+                    reinterpret_cast<inotify_event*>(buffer.data() + i);
+                std::string fullName = dir + "/" + event->name;
+
+                plugin.logger().debug()
+                    << "File " << event->name << " created"
+                    << std::flush;
+                size_t eventLen = sizeof(inotify_event) + event->len;
+                i += eventLen;
+
+                if (fullName == plugin._firewallRulesPath) {
+                    plugin.cleanupPolicies();
+                    plugin.loadFirewallRules();
+                    plugin.applyPermentRulesToRuntime();
+                }
+                else if (fullName == plugin._firewallUpdatesPath) {
+                    plugin.updateFirewallRules();
+                }
+                else {
+                    plugin.logger().debug()
+                        << "Ignoring " << event->name
+                        << std::flush;
+                }
+            }
+        }
+    }
+
+    inotify_rm_watch(fd, wd);
+    close(fd);
+
+    plugin.logger().note()
+        << "Directory watcher for" << dir
+        << " terminated."
+        << std::flush;
 }
